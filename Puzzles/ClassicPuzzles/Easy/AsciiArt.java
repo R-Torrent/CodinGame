@@ -43,6 +43,7 @@ public class AsciiArt {
             }
             System.out.println(row.toString());
         }
+        in.close();
     }
 
 }
