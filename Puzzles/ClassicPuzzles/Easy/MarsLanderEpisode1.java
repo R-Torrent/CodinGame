@@ -20,6 +20,7 @@ class MarsLanderEpisode1 {
             int landX = in.nextInt(); // X coordinate of a surface point. (0 to 6999)
             int landY = in.nextInt(); // Y coordinate of a surface point. By linking all the points together in a sequential fashion, you form the surface of Mars.
         }
+        
         final int vLimit = -40;
 
         // game loop
@@ -36,8 +37,8 @@ class MarsLanderEpisode1 {
             // To debug: System.err.println("Debug messages...");
 
             // 2 integers: rotate power. rotate is the desired rotation angle (should be 0 for level 1), power is the desired thrust power (0 to 4).
-            if (vLimit - vSpeed < -1)
-                System.out.println("0 3");
+            if (vLimit - vSpeed <= -1)
+                System.out.println("0 0");
             else
                 System.out.println("0 4");
         }
