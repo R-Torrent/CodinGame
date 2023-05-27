@@ -1,4 +1,4 @@
-package Puzzles.ClassicPuzzles.Medium;
+package Puzzles.ClassicPuzzle.Medium;
 
 import java.util.*;
 

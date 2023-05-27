@@ -1,4 +1,4 @@
-package Puzzles.ClassicPuzzles.Easy;
+package Puzzles.ClassicPuzzle.Easy;
 
 import java.util.*;
 import java.util.stream.IntStream;
