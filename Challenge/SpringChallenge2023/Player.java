@@ -94,11 +94,10 @@ class Player {
             if (c.getResource() == Resource.CRYSTAL && c.getQuantity() > 0)
                 activeCrystalSources.add(c);
         activeCrystalSources.trimToSize();
-
-        updateMyPopulation();
     }
 
     private void loadTurn() {
+        myPopulation = 0;
         for (Cell c : map) {
             int resources = in.nextInt(); // the current amount of eggs/crystals on this cell
             int myAnts = in.nextInt(); // the amount of your ants on this cell
@@ -106,11 +105,10 @@ class Player {
             c.setQuantity(resources);
             c.setMyAnts(myAnts);
             c.setOppAnts(oppAnts);
+            myPopulation += myAnts;
         }
 
         activeCrystalSources.removeIf(c -> c.getQuantity() == 0);
-
-        updateMyPopulation();
     }
 
     int getGameTurn() { return gameTurn; }
@@ -125,12 +123,6 @@ class Player {
 
     int getMyPopulation() { return myPopulation; }
 
-    void updateMyPopulation() {
-        myPopulation = 0;
-        for (Cell c : map)
-            myPopulation += c.getMyAnts();
-    }
-
 }
 
 class AntBrain {
@@ -143,25 +135,32 @@ class AntBrain {
         this.player = player;
         shortestPath = shortestPaths(player.getMap());
         int base0 = player.getMyBases()[0].getIndex();
-        Collections.sort(player.getActiveCrystalSources(),
+        player.getActiveCrystalSources().sort(
                 (c1, c2) -> shortestPath[base0][c1.getIndex()] - shortestPath[base0][c2.getIndex()]);
     }
 
     void musterColony() {
         marabuntas = new ArrayList<>(2);
-        int sizeMara0 = player.getMyPopulation() * 4 / 10;
-        int sizeMara1 = player.getMyPopulation() * 6 / 10;
-        marabuntas.add(new Marabunta(sizeMara0, Strategy.STEALMINERALS));
-        marabuntas.add(new Marabunta(sizeMara1, Strategy.CLOSESTFROMBASE));
+        marabuntas.add(new Marabunta(0, Strategy.STEALMINERALS));
+        marabuntas.add(new Marabunta(0, Strategy.CLOSESTFROMBASE));
     }
 
     void think() {
-        marabuntas.forEach(Marabunta::clearMemory);
+        if (player.getGameTurn() == 0) {
+            int sizeMara0 = player.getMyPopulation() * 4 / 10;
+            int sizeMara1 = player.getMyPopulation() * 6 / 10;
+            marabuntas.get(0).setSize(sizeMara0);
+            marabuntas.get(1).setSize(sizeMara1);
+        }
+        else
+            marabuntas.forEach(Marabunta::clearMemory);
+
         int crystalPatches = player.getActiveCrystalSources().size();
-        if (crystalPatches == 1) {
+        if (crystalPatches == 1 && marabuntas.size() == 2) {
             marabuntas.remove(0); // disband raiders
             marabuntas.get(0).setSize(player.getMyPopulation());
         }
+
         for (Marabunta m : marabuntas) {
             if (m.getTarget() == null || m.getTarget().getQuantity() == 0)
                 switch (m.getStrategy()) {
@@ -169,16 +168,32 @@ class AntBrain {
                         m.setTarget(player.getActiveCrystalSources().get(0));
                         break;
                     case STEALMINERALS:
-                        m.setTarget(player.getActiveCrystalSources().get(crystalPatches / 2));
+                        Cell nextTarget = player.getActiveCrystalSources().get(crystalPatches - 1);
+                        if (player.getGameTurn() == 0)
+                            nextTarget = player.getActiveCrystalSources().get(crystalPatches / 2);
+                        else if (player.getActiveCrystalSources().size() > 2) {
+                            int minPath = player.getMap().length, path;
+                            for (Cell candidate : player.getActiveCrystalSources()) {
+                                if (candidate == m.getTarget()) continue;
+                                if ((path = shortestPath[m.getTarget().getIndex()][candidate.getIndex()]) < minPath) {
+                                    nextTarget = candidate;
+                                    minPath = path;
+                                }
+                            }
+                        }
+                        m.setTarget(nextTarget);
                     default:
                         break;
                 }
-            m.addCommand(singleCommand(Command.LINE, player.getMyBases()[0], m.getTarget(), m.getSize(), null));
+            Cell base0 = player.getMyBases()[0];
+            int antDensity = m.getSize() / (shortestPath[base0.getIndex()][m.getTarget().getIndex()] + 1);
+            m.addCommand(singleCommand(Command.LINE, base0, m.getTarget(), antDensity, null));
         }
     }
 
     String issueCommands() {
         StringJoiner commands = new StringJoiner(";");
+
         if (player.getGameTurn() == 0)
             commands.add(singleCommand(Command.MESSAGE, null, null, 0, "gl hf"));
         marabuntas.stream().map(Marabunta::getCommands).flatMap(List::stream).forEach(commands::add);
@@ -260,9 +275,9 @@ class Marabunta {
         commands.clear();
     }
 
-    public Cell getTarget() { return target; }
+    Cell getTarget() { return target; }
 
-    public void setTarget(Cell target) { this.target = target; }
+    void setTarget(Cell target) { this.target = target; }
 
 }
 
