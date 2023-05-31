@@ -1,10 +1,10 @@
-package Challenge.SpringChallenge2023;
+package Challenge.SpringChallenge2023.Wood2;
 
 import java.util.*;
 
 /*
  * Spring Challenge 2023
- * Challenge
+ * Contest
  */
 
 /*
