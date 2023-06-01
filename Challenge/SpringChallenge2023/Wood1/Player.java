@@ -38,6 +38,7 @@ class Player {
         catch (Exception e) {
             e.printStackTrace(System.err);
             System.out.println(Command.MESSAGE.formCommand(null, null, 0, "OOPS! Brain dead"));
+            player.deadBrain();
         }
         finally {
             player.in.close();
@@ -66,6 +67,13 @@ class Player {
             gameTurn++;
         }
 
+    }
+
+    private void deadBrain() {
+        while (true) {
+            loadTurn();
+            System.out.println(Command.WAIT.formCommand(null, null, 0, null));
+        }
     }
 
     private void loadField() {
@@ -151,10 +159,7 @@ class AntBrain {
 
         base0 = player.getMyBases()[0];
         // targets order by proximity to base (first) and greater size (second)
-        player.getPotentialResources().sort((c1, c2) -> {
-            int p = shortestPath[base0.getIndex()][c1.getIndex()] - shortestPath[base0.getIndex()][c2.getIndex()];
-            return p != 0 ? p : c2.getQuantity() - c1.getQuantity();
-        });
+        player.getPotentialResources().sort(comparatorDistancesTo(base0));
     }
 
     void musterColony() {
@@ -162,12 +167,14 @@ class AntBrain {
         marabuntas.add(new Marabunta(0, Strategy.HARVESTFAR));
         marabuntas.add(new Marabunta(0, Strategy.HARVESTCLOSE));
         marabuntas.add(new Marabunta(0, Strategy.EGGSEAKER));
-
-        availableTargets = new ArrayList<>(player.getPotentialResources());
     }
 
     void think() {
         assignAnts();
+        availableTargets = new ArrayList<>(player.getPotentialResources());
+        marabuntas.stream()
+                .filter(m -> m.getSize() != 0)
+                .forEach(m -> availableTargets.remove(m.getTarget()));
 
         for (Marabunta m : marabuntas) {
             m.clearMemory();
@@ -213,6 +220,23 @@ class AntBrain {
         return commands.toString();
     }
 
+    static Cell findClosestTo(Cell to, List<Cell> pool) {
+        if (to == null || pool == null) return null;
+        List<Cell> copy = new ArrayList<>(pool);
+        copy.remove(to);
+        copy.sort(comparatorDistancesTo(to));
+
+        return copy.get(0);
+    }
+
+    static private Comparator<Cell> comparatorDistancesTo(Cell to) {
+        // targets order by proximity (first) and greater size (second)
+        return (c1, c2) -> {
+            int path = shortestPath[to.getIndex()][c1.getIndex()] - shortestPath[to.getIndex()][c2.getIndex()];
+            return path != 0 ? path : c2.getQuantity() - c1.getQuantity();
+        };
+    }
+
     // Floyd-Warshall algorithm
     static private int[][] shortestPaths(Cell[] map) {
         final int N = map.length;
@@ -232,19 +256,6 @@ class AntBrain {
                 }
 
         return shortestPath;
-    }
-
-    static Cell closestTo(Cell from, List<Cell> pool) {
-        if (from == null || pool == null) return null;
-        List<Cell> copy = new ArrayList<>(pool);
-        copy.remove(from);
-        // targets order by proximity to 'from'' (first) and greater size (second)
-        copy.sort((c1, c2) -> {
-            int p = shortestPath[from.getIndex()][c1.getIndex()] - shortestPath[from.getIndex()][c2.getIndex()];
-            return p != 0 ? p : c2.getQuantity() - c1.getQuantity();
-        });
-
-        return copy.get(0);
     }
 
 }
@@ -292,13 +303,13 @@ enum Strategy {
         Cell selectNextTarget(Cell currentTarget, List<Cell> availableTargets) {
             return currentTarget == null
                     ? availableTargets.get(availableTargets.size() / 2)
-                    : AntBrain.closestTo(currentTarget, availableTargets);
+                    : AntBrain.findClosestTo(currentTarget, availableTargets);
         } },
     HARVESTCLOSE {
         Cell selectNextTarget(Cell currentTarget, List<Cell> availableTargets) {
             return currentTarget == null
                     ? availableTargets.get(availableTargets.size() / 4)
-                    : AntBrain.closestTo(currentTarget, availableTargets);
+                    : AntBrain.findClosestTo(currentTarget, availableTargets);
         } },
     EGGSEAKER {
         Cell selectNextTarget(Cell currentTarget, List<Cell> availableTargets) {
@@ -327,21 +338,13 @@ class Cell {
         this.quantity = quantity;
     }
 
-    int getIndex() {
-        return index;
-    }
+    int getIndex() { return index; }
 
-    Resource getResource() {
-        return resource;
-    }
+    Resource getResource() { return resource; }
 
-    int getQuantity() {
-        return quantity;
-    }
+    int getQuantity() { return quantity; }
 
-    void setQuantity(int quantity) {
-        this.quantity = quantity;
-    }
+    void setQuantity(int quantity) { this.quantity = quantity; }
 
     boolean isNeighborWith(int indexN) {
         for (Cell c : neighbors)
@@ -358,17 +361,11 @@ class Cell {
 
     int getMyAnts() { return myAnts; }
 
-    void setMyAnts(int myAnts) {
-        this.myAnts = myAnts;
-    }
+    void setMyAnts(int myAnts) { this.myAnts = myAnts; }
 
-    int getOppAnts() {
-        return oppAnts;
-    }
+    int getOppAnts() { return oppAnts; }
 
-    void setOppAnts(int oppAnts) {
-        this.oppAnts = oppAnts;
-    }
+    void setOppAnts(int oppAnts) { this.oppAnts = oppAnts; }
 
     @Override
     public boolean equals(Object o) {
