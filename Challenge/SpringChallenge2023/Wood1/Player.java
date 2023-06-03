@@ -28,7 +28,7 @@ class Player {
     private int gameTurn;
     private final AntBrain overmind;
     private Cell[] map, myBases, oppBases;
-    private ArrayList<Cell> allResources;
+    private List<Cell> allResources;
     private int myPopulation;
 
     public static void main(String[] args) {
@@ -109,11 +109,7 @@ class Player {
             oppBases[i] = map[oppBaseIndex];
         }
 
-        allResources = new ArrayList<>(numberOfCells);
-        for (Cell c : map)
-            if (c.getResource() != Resource.NONE && c.getQuantity() > 0)
-                allResources.add(c);
-        allResources.trimToSize();
+        allResources = Arrays.stream(map).filter(Cell::hasResources).collect(Collectors.toList());
     }
 
     private void loadTurn() {
@@ -137,7 +133,7 @@ class Player {
 
     Cell[] getOppBases() { return oppBases; }
 
-    ArrayList<Cell> getAllResources() { return allResources; }
+    List<Cell> getAllResources() { return allResources; }
 
     int getMyPopulation() { return myPopulation; }
 
@@ -145,88 +141,75 @@ class Player {
 
 class AntBrain {
 
-    final Player player;
-    static int[][] shortestPath;
-    List<Cell> allResources;
+    private final Player player;
+    private static int[][] shortestPath;
+    private final Cell base0; // To be removed as # of bases increases in higher leagues
+    private final List<Cell> allResources;
+    int myAnts;
     List<Marabunta> marabuntas;
-    List<Link> availableLinks;
     List<Cell> availableTargets;
 
     AntBrain(Player player) {
         this.player = player;
-
         shortestPath = shortestPaths(player.getMap());
-
+        base0 = player.getMyBases()[0];
         allResources = player.getAllResources();
-
-        int numBases = player.getMyBases().length, numResources = allResources.size();
-        availableLinks = new ArrayList<>(numResources * numResources + 2 * (numBases + numResources));
-        for (Cell cR1 : allResources) {
-            for (Cell cB : player.getMyBases()) {
-                availableLinks.add(new Link(cB, cR1));
-                availableLinks.add(new Link(cR1, cB));
-            }
-            for (Cell cR2 : allResources) {
-                availableLinks.add(new Link(cR1, cR2));
-                availableLinks.add(new Link(cR2, cR1));
-            }
-        }
     }
 
     void musterColony() {
         marabuntas = new ArrayList<>(3);
-        marabuntas.add(new Marabunta(0, player.getMyBases()[0], Strategy.HARVESTFAR));
-        marabuntas.add(new Marabunta(0, player.getMyBases()[0], Strategy.HARVESTCLOSE));
-        marabuntas.add(new Marabunta(0, player.getMyBases()[0], Strategy.EGGSEAKER));
+        marabuntas.add(new Marabunta("Raiders", 0, base0, Strategy.HARVESTFAR));
+        marabuntas.add(new Marabunta("LocalBoys", 0, base0, Strategy.HARVESTCLOSE));
+        marabuntas.add(new Marabunta("FabergéCollectors", 0, base0, Strategy.EGGSEAKER));
     }
 
     void think() {
-        allResources.removeIf(c -> c.getQuantity() == 0);
+        myAnts = player.getMyPopulation();
+
+        allResources.removeIf(c -> !c.hasResources());
         // targets order by proximity to base (first) and greater size (second)
-        allResources.sort(comparatorDistancesTo(player.getMyBases()[0]));
+        allResources.sort(comparatorDistancesTo(base0));
 
-        availableLinks.removeIf(((Predicate<Link>)l -> !allResources.contains(l.getTo()))
-                        .or(l -> !allResources.contains(l.getFrom())));
-
-        assignAnts();
         availableTargets = new ArrayList<>(allResources);
-        marabuntas.stream()
-                .filter(m -> m.getSize() != 0)
-                .forEach(m -> m.getTarget().ifPresent(availableTargets::remove));
-
-        for (Marabunta m : marabuntas) {
+        marabuntas.forEach(m -> m.getTargets().removeIf(c -> !availableTargets.contains(c)));
+        availableTargets.removeAll(marabuntas.stream().map(Marabunta::getTargets)
+                .flatMap(List::stream).collect(Collectors.toSet()));
+        marabuntas.forEach(m -> {
             m.clearMemory();
-            if (m.getSize() == 0) continue;
-            if (!m.getTarget().filter(t -> t.getQuantity() != 0).isPresent() && availableTargets.size() != 0)
-                m.setTarget(availableTargets);
+            if (!m.getHead().filter(Cell::hasResources).isPresent())
+                m.setHead(availableTargets);
+            assignAnts(m);
+            if (!m.isPopulated())
+                m.clearTargets(availableTargets);
+        });
+        availableTargets.sort(comparatorDistancesTo(base0));
 
-            for (Link l : m.getPath())
+        marabuntas.stream().filter(Marabunta::isPopulated).forEach(m -> {
+            for (Link l : m.constructPath(availableTargets))
                 m.addCommand(Command.LINE.formCommand(l.getFrom(), l.getTo(), m.density(), null));
-        }
+        });
     }
 
-    void assignAnts() {
-        int ants = player.getMyPopulation();
+    void assignAnts(Marabunta marabunta) {
         if (allResources.stream()
                 .anyMatch(((Predicate<Cell>)c -> c.getResource().isType(Resource.EGGS))
-                        .and(c -> distance(player.getMyBases()[0], c) < ants))) {
-            marabuntas.get(0).setSize(0);
-            marabuntas.get(1).setSize(0);
-            marabuntas.get(2).setSize(ants);
+                        .and(c -> distance(base0, c) < myAnts))) {
+            marabunta.setSize(marabunta.getStrategy().isStrategy(Strategy.EGGSEAKER) ? myAnts : 0);
         }
-        else {
-            if (allResources.size() > 1) {
-                int mara0 = ants * 6 / 10;
-                int mara1 = ants * 4 / 10;
-                marabuntas.get(0).setSize(mara0);
-                marabuntas.get(1).setSize(mara1);
-            }
-            else {
-                marabuntas.get(0).setSize(ants);
-                marabuntas.get(1).setSize(0);
-            }
-            marabuntas.get(2).setSize(0);
-        }
+        else
+            if (!marabunta.getTargets().isEmpty())
+                switch (marabunta.getStrategy()) {
+                    case HARVESTFAR:
+                        marabunta.setSize(myAnts * 6 / 10);
+                        break;
+                    case HARVESTCLOSE:
+                        marabunta.setSize(myAnts * 4 / 10);
+                        break;
+                    case EGGSEAKER:
+                        marabunta.setSize(0);
+                }
+            else
+                marabunta.setSize(0);
     }
 
     String issueCommands() {
@@ -239,11 +222,12 @@ class AntBrain {
         return commands.toString();
     }
 
-    static Cell findClosestTo(Cell to, List<Cell> pool) {
+    static Optional<Cell> findClosestTo(Cell to, List<Cell> pool) {
         List<Cell> copy = new ArrayList<>(pool);
+        copy.remove(to);
         copy.sort(comparatorDistancesTo(to));
 
-        return copy.get(0);
+        return copy.stream().findFirst();
     }
 
     static int distance(Cell from, Cell to) {
@@ -287,26 +271,36 @@ class AntBrain {
 
 class Marabunta {
 
+    final String name;
     private int size;
     final private Cell base;
     final private Strategy strategy;
     final private List<String> commands;
+    private Cell head;
+    final private LinkedList<Cell> targets;
     final private LinkedList<Link> path;
-    private Cell target;
 
 
-    Marabunta(int size, Cell base, Strategy strategy)
+    Marabunta(String name, int size, Cell base, Strategy strategy)
     {
+        this.name = name;
         this.size = size;
         this.base = base;
         this.strategy = strategy;
         commands = new ArrayList<>();
+        targets = new LinkedList<>();
         path = new LinkedList<>();
     }
 
-    int getSize() { return size; }
+    String getName() { return name; }
+
+    boolean isPopulated() {
+        return size > 0;
+    }
 
     void setSize(int size) { this.size = size; }
+
+    public Strategy getStrategy() { return strategy; }
 
     List<String> getCommands() { return commands; }
 
@@ -318,44 +312,70 @@ class Marabunta {
         commands.clear();
     }
 
-    Optional<Cell> getTarget() {
-        return Optional.ofNullable(target);
+    Optional<Cell> getHead() {
+        return Optional.ofNullable(head);
     }
 
-    List<Cell> getTargets() {
-        return path.stream().map(Link::getTo).collect(Collectors.toList());
+    List<Cell> getTargets() { return targets; }
+
+    void clearTargets(List<Cell> availableTargets) {
+        head = null;
+        targets.stream().filter(Cell::hasResources).forEach(availableTargets::add);
+        targets.clear();
+        System.err.println(name + ": head & targets cleared");
     }
 
-    void setTarget(List<Cell> availableTargets) {
-        if (target != null)
-            path.removeLast();
-        target = strategy.selectNextTarget(target, availableTargets);
-        if (target != null) {
-            availableTargets.remove(target);
-            path.add(new Link(path.isEmpty() ? base : path.getLast().getTo(), target));
-        };
+    void setHead(List<Cell> availableTargets) {
+        if (strategy.isStrategy(Strategy.EGGSEAKER))
+            clearTargets(availableTargets);
+        Optional<Cell> newHead = strategy.selectNextTarget(head, availableTargets);
+        newHead.ifPresent(c -> {
+            availableTargets.remove(c);
+            targets.add(c);
+            System.err.println(name + ": target added to head <- " + c.getIndex());
+        });
+        head = newHead.orElse(null);
     }
 
-    public List<Link> getPath() { return path; }
+    public List<Link> constructPath(List<Cell> availableTargets) {
+        path.clear();
+        targets.forEach(c -> path.add(new Link(path.isEmpty() ? base : path.getLast().getTo(), c)));
+        System.err.println(name + ": links before search");
+        for (Link l : path)
+            System.err.println(l.getFrom().getIndex() + " ->- " + l.getTo().getIndex());
 
-    void optimizetPath(List<Cell> availableTargets) {
-        for (Link l : path) {
-            if (l.searchExhausted())
-                continue;
+        int limDeviation = Math.min(
+                size - (path.stream().mapToInt(Link::getLength).sum() + 1),
+                strategy.getDeviationFromPath());
+        for (int i = 0; i < path.size(); i++) {
+            Link link = path.get(i);
             List<Cell> candidates = new ArrayList<>();
-            for (int deviation = 0;  deviation <= strategy.getDeviationFromPath(); deviation++) {
+            for (int deviation = 0;  deviation <= limDeviation; deviation++) {
                 final int finalDeviation = deviation;
                 candidates = availableTargets.stream()
-                        .filter(t -> AntBrain.distance(l.getFrom(), l.getTo(), t) <= finalDeviation)
+                        .filter(((Predicate<Cell>)c -> (AntBrain.distance(link.getFrom(), link.getTo(), c)
+                                - link.getLength() <= finalDeviation))
+                                .and(c -> AntBrain.distance(base, c) <= AntBrain.distance(base, link.getTo())))
                         .collect(Collectors.toList());
                 if (!candidates.isEmpty())
                     break;
             }
-            if (candidates.isEmpty())
-                l.skipHenceforth();
-            Cell candidate;
-
+            if (!candidates.isEmpty()) {
+                candidates.sort((c1, c2) -> c2.getQuantity() - c1.getQuantity());
+                Cell candidate = candidates.get(0);
+                System.err.println(name + ": target added to path <-+ " + candidate.getIndex());
+                targets.add(i, candidate);
+                path.set(i, new Link(candidate, link.getTo()));
+                path.add(i, new Link(link.getFrom(), candidate));
+                availableTargets.remove(candidate);
+                break;
+            }
         }
+        System.err.println(name + ": links after search");
+        for (Link l : path)
+            System.err.println(l.getFrom().getIndex() + " ->- " + l.getTo().getIndex());
+
+        return path;
     }
 
     int density() {
@@ -369,13 +389,11 @@ class Link {
     private final Cell from;
     private final Cell to;
     private final int length;
-    private boolean skip;
 
     Link(Cell from, Cell to) {
         this.from = from;
         this.to = to;
         length = AntBrain.distance(from, to);
-        skip = false;
     }
 
     public Cell getFrom() { return from; }
@@ -384,46 +402,40 @@ class Link {
 
     public int getLength() { return length; }
 
-    boolean searchExhausted() {
-        return skip;
-    }
-
-    void skipHenceforth() {
-        skip = true;
-    }
-
 }
 
 enum Strategy {
 
-    HARVESTFAR (2) {
-        Cell selectNextTarget(Cell currentTarget, List<Cell> availableTargets) {
-            return Optional.ofNullable(currentTarget)
-                    .map(t ->AntBrain.findClosestTo(t, availableTargets))
-                    .orElse(availableTargets.get(availableTargets.size() / 2));
+    HARVESTFAR (3) {
+        Optional<Cell> selectNextTarget(Cell head, List<Cell> availableTargets) {
+            if (availableTargets.isEmpty()) return Optional.empty();
+            return Optional.ofNullable(head)
+                    .map(c -> AntBrain.findClosestTo(c, availableTargets))
+                    .orElse(Optional.of(availableTargets.get(availableTargets.size() / 2)));
         } },
-    HARVESTCLOSE (1) {
-        Cell selectNextTarget(Cell currentTarget, List<Cell> availableTargets) {
-            return Optional.ofNullable(currentTarget)
-                    .map(t ->AntBrain.findClosestTo(t, availableTargets))
-                    .orElse(availableTargets.get(availableTargets.size() / 4));
+    HARVESTCLOSE (2) {
+        Optional<Cell> selectNextTarget(Cell head, List<Cell> availableTargets) {
+            if (availableTargets.isEmpty()) return Optional.empty();
+            return Optional.ofNullable(head)
+                    .map(c -> AntBrain.findClosestTo(c, availableTargets))
+                    .orElse(Optional.of(availableTargets.get(availableTargets.size() / 4)));
         } },
-    EGGSEAKER (1) {
-        Cell selectNextTarget(Cell currentTarget, List<Cell> availableTargets) {
-            return availableTargets
-                    .stream()
+    EGGSEAKER (2) {
+        Optional<Cell> selectNextTarget(Cell head, List<Cell> availableTargets) {
+            return availableTargets.stream()
                     .filter(c -> c.getResource().isType(Resource.EGGS))
-                    .findFirst()
-                    .orElse(null);
+                    .findFirst();
         } };
 
     private final int deviationFromPath;
 
     Strategy(int deviationFromPath) { this.deviationFromPath = deviationFromPath; }
 
-    public int getDeviationFromPath() { return deviationFromPath; }
+    boolean isStrategy(Strategy strategy) { return this.equals(strategy); }
 
-    abstract Cell selectNextTarget(Cell currentTarget, List<Cell> availableTargets);
+    int getDeviationFromPath() { return deviationFromPath; }
+
+    abstract Optional<Cell> selectNextTarget(Cell head, List<Cell> availableTargets);
 
 }
 
@@ -447,6 +459,10 @@ class Cell {
     Resource getResource() { return resource; }
 
     int getQuantity() { return quantity; }
+
+    boolean hasResources() {
+        return quantity > 0;
+    }
 
     void setQuantity(int quantity) { this.quantity = quantity; }
 
