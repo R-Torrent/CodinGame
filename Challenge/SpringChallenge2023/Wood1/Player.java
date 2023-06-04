@@ -160,7 +160,7 @@ class AntBrain {
         marabuntas = new ArrayList<>(3);
         marabuntas.add(new Marabunta("Raiders", 0, base0, Strategy.HARVESTFAR));
         marabuntas.add(new Marabunta("LocalBoys", 0, base0, Strategy.HARVESTCLOSE));
-        marabuntas.add(new Marabunta("FabergéCollectors", 0, base0, Strategy.EGGSEAKER));
+        marabuntas.add(new Marabunta("FabergéCollectors", 0, base0, Strategy.EGGSEEKER));
     }
 
     void think() {
@@ -194,7 +194,7 @@ class AntBrain {
         if (allResources.stream()
                 .anyMatch(((Predicate<Cell>)c -> c.getResource().isType(Resource.EGGS))
                         .and(c -> distance(base0, c) < myAnts))) {
-            marabunta.setSize(marabunta.getStrategy().isStrategy(Strategy.EGGSEAKER) ? myAnts : 0);
+            marabunta.setSize(marabunta.getStrategy().isStrategy(Strategy.EGGSEEKER) ? myAnts : 0);
         }
         else
             if (!marabunta.getTargets().isEmpty())
@@ -205,7 +205,7 @@ class AntBrain {
                     case HARVESTCLOSE:
                         marabunta.setSize(myAnts * 4 / 10);
                         break;
-                    case EGGSEAKER:
+                    case EGGSEEKER:
                         marabunta.setSize(0);
                 }
             else
@@ -326,7 +326,7 @@ class Marabunta {
     }
 
     void setHead(List<Cell> availableTargets) {
-        if (strategy.isStrategy(Strategy.EGGSEAKER))
+        if (strategy.isStrategy(Strategy.EGGSEEKER))
             clearTargets(availableTargets);
         Optional<Cell> newHead = strategy.selectNextTarget(head, availableTargets);
         newHead.ifPresent(c -> {
@@ -420,7 +420,7 @@ enum Strategy {
                     .map(c -> AntBrain.findClosestTo(c, availableTargets))
                     .orElse(Optional.of(availableTargets.get(availableTargets.size() / 4)));
         } },
-    EGGSEAKER (2) {
+    EGGSEEKER(2) {
         Optional<Cell> selectNextTarget(Cell head, List<Cell> availableTargets) {
             return availableTargets.stream()
                     .filter(c -> c.getResource().isType(Resource.EGGS))
