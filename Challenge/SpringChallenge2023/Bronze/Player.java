@@ -321,7 +321,7 @@ class Anthill {
             antsInMound -= antsPerMarabunta;
             activeMarabuntas--;
         }
-        marabuntas.stream().forEach(m -> {
+        marabuntas.forEach(m -> {
             for (Link l : m.constructPath(availableTargets))
                 m.addCommand(Command.LINE.formCommand(l.getFrom(), l.getTo(), m.density(), null));
         });
@@ -393,7 +393,8 @@ class Marabunta {
 
     void setHead(List<Cell> availableTargets) {
         Optional<Cell> newHead = strategy.selectNextTarget(head, availableTargets);
-        if (!newHead.isPresent() && strategy.isStrategy(Strategy.EGGHOARDER)) {
+        if (!newHead.isPresent() &&
+                (strategy.isStrategy(Strategy.EGGHOARDER) || strategy.isStrategy(Strategy.CRYSTALOBSESSION))) {
             setStrategy(Strategy.GATHERER);
             newHead = strategy.selectNextTarget(head, availableTargets);
         }
