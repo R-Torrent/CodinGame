@@ -1,0 +1,3 @@
+Para subir a Silver League:
+
+El rendimiento del Player es bajo cuando el número de objetivos es elevado pero las hormigas disponibles de inicio son pocas. Se forman muchas marabuntas de pocos miembros. En casos extremos, el programa se congela porque no es capaz de formar una columna hasta las fuentes de huevos más próximas. Corregir esto para que las marabuntas tengan, de inicio, una densidad mínima. O, como mínimo, que al menos una de ellas sea capaz de llegar a los huevos (¡en caso de que existan!).
