@@ -32,8 +32,7 @@ public class War {
         in.close();
 
         int turnNumber;
-        for (turnNumber= 0; !player1.getCardDeque().isEmpty() && !player2.getCardDeque().isEmpty(); ) {
-            turnNumber++;
+        for (turnNumber= 0; !player1.getCardDeque().isEmpty() && !player2.getCardDeque().isEmpty(); turnNumber++) {
             Optional<Card> lastCardDrawnPlayer1, lastCardDrawnPlayer2 = null;
             int fight = 0;
             boolean ongoingGame;
