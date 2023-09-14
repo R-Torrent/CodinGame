@@ -1,0 +1,43 @@
+A -> A
+B -> P
+C
+D
+E -> L
+F -> T
+G
+H -> G
+I -> B
+J -> C
+K -> D
+L -> O
+M
+N -> M
+O -> N
+P -> H
+Q -> E
+R -> U
+S
+T -> R
+U -> W
+V -> Y
+W -> S
+X -> F
+Y -> I
+Z
+
+
+Red message
+QTTLT : Vlrt jlkq wplrek tqfrto RB, KLUO, EQXF lt TYHPF.
+ERROR : Your code should return UP, DOWN, LEFT or RIGHT.
+
+Red message
+Fynqlrf!
+Timeout!
+
+Red message
+Vlr uqtq jarhpf iv ao qoqnv...
+You were caught by an enemy...
+
+Green message
+Jlohtafreafylow!
+Congratulations!
