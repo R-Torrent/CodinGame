@@ -19,17 +19,17 @@ class Player {
     List<Point> checkpoints;
     int lap;
     int currentSegment;
-    boolean newLap;
+    boolean firstSegment;
     List<Double> distanceSegments;
     int maxSegment;
     boolean boostAvailable;
 
-    // game parameters
-    final int radius = 600;
-    final double reduceThreshold = 2.0; // >= 1.0
-    final int thrustUponRadius = 40; // >= 0
-    final double boostThreshold = 0.8; // [0 .. 1.0]
-    final double attenuationOnSlip = 0.6; // [0 .. 1.0]
+    // race winning fine-tuning!
+    final int radius = 600; // checkpoint radius
+    final double reduceThreshold = 2.0; // actual breaking distance from checkpoint: radius * reduceThreshold ( >= 1.0 )
+    final double thrustUponRadius = 0.4; // thrust upon reaching the checkpoint radius [0 .. 1.0]
+    final double attenuationOnSlip = 0.6; // thrust attenuation when target checkpoint at 90+ degrees [0 .. 1.0]
+    final double boostThreshold = 0.8; // activation upon reaching this fraction of the boost segment [0 .. 1.0]
 
     public Player() {
         player = new Point();
@@ -37,7 +37,7 @@ class Player {
         opponent = new Point();
         checkpoints = new ArrayList<>();
         lap = 0;
-        newLap = false;
+        firstSegment = false;
         boostAvailable = true;
     }
 
@@ -47,6 +47,7 @@ class Player {
         in.close();
     }
 
+    @SuppressWarnings("InfiniteLoopStatement")
     private void gameLoop(Scanner in)
     {
         // game loop
@@ -80,13 +81,13 @@ class Player {
                 checkpoints.add(next);
                 break;
             case 0:
-                if (!newLap) {
-                    newLap = true;
+                if (!firstSegment) {
+                    firstSegment = true;
                     if (++lap == 2) {
                         int s = checkpoints.size();
                         distanceSegments = new ArrayList<>(s);
-                        for (int i = 0; i < s; i++)
-                            distanceSegments.add(checkpoints.get(i).distanceTo(checkpoints.get((i + 1) % s)));
+                        for (int i = s - 1; i < 2 * s - 1; i++)
+                            distanceSegments.add(checkpoints.get(i % s).distanceTo(checkpoints.get((i + 1) % s)));
                         double maxDistance = 0.0, d;
                         for (int i = 0; i < s; i++)
                             if ((d = distanceSegments.get(i)) > maxDistance) {
@@ -97,30 +98,30 @@ class Player {
                 }
                 break;
             default:
-                newLap = false;
+                firstSegment = false;
         }
     }
 
     private String output() {
         if (boostAvailable && currentSegment == maxSegment && lap == 2
-                && nextCheckpointDist < distanceSegments.get(maxSegment) * boostThreshold) {
+                && nextCheckpointDist < distanceSegments.get(currentSegment) * boostThreshold) {
             boostAvailable = false;
 
             return nextCheckpoint.getX() + " " + nextCheckpoint.getY() + " BOOST";
         }
-        int distFact = Math.min((int)(((100 - thrustUponRadius) * nextCheckpointDist
-                - radius * (100 - reduceThreshold * thrustUponRadius)) / radius / (reduceThreshold - 1)), 100);
+        double distFactor = ((1 - thrustUponRadius) * nextCheckpointDist
+                - (1 - thrustUponRadius * reduceThreshold ) * radius) / radius / (reduceThreshold - 1);
         if (nextCheckpointAngle > 90)
             nextCheckpointAngle = 90;
         else if (nextCheckpointAngle < -90)
             nextCheckpointAngle = -90;
-        double angleFact = 1 + attenuationOnSlip * (Math.cos(Math.PI * nextCheckpointAngle / 180) - 1) / 2;
-        int thrust = Math.min((int)(distFact * angleFact), 100);
+        double angleFactor = 1 + attenuationOnSlip * (Math.cos(Math.PI * nextCheckpointAngle / 180) - 1) / 2;
+        int thrust = Math.min((int)(100 * distFactor * angleFactor), 100);
 
         return nextCheckpoint.getX() + " " + nextCheckpoint.getY() + " " + thrust;
     }
 
-    private class Point {
+    private static class Point {
 
         private int x;
         private int y;
