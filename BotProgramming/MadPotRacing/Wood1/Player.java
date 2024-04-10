@@ -24,6 +24,13 @@ class Player {
     int maxSegment;
     boolean boostAvailable;
 
+    // game parameters
+    final int radius = 600;
+    final double reduceThreshold = 2.0; // >= 1.0
+    final int thrustUponRadius = 40; // >= 0
+    final double boostThreshold = 0.8; // [0 .. 1.0]
+    final double attenuationOnSlip = 0.6; // [0 .. 1.0]
+
     public Player() {
         player = new Point();
         nextCheckpoint = new Point();
@@ -96,17 +103,18 @@ class Player {
 
     private String output() {
         if (boostAvailable && currentSegment == maxSegment && lap == 2
-                && nextCheckpointDist < distanceSegments.get(maxSegment) * 0.8) {
+                && nextCheckpointDist < distanceSegments.get(maxSegment) * boostThreshold) {
             boostAvailable = false;
 
             return nextCheckpoint.getX() + " " + nextCheckpoint.getY() + " BOOST";
         }
-        int distFact = Math.min(50 * (nextCheckpointDist - 600) / 600, 100);
+        int distFact = Math.min((int)(((100 - thrustUponRadius) * nextCheckpointDist
+                - radius * (100 - reduceThreshold * thrustUponRadius)) / radius / (reduceThreshold - 1)), 100);
         if (nextCheckpointAngle > 90)
             nextCheckpointAngle = 90;
         else if (nextCheckpointAngle < -90)
             nextCheckpointAngle = -90;
-        double angleFact = 0.5 * (1 + Math.cos(Math.PI * nextCheckpointAngle / 180));
+        double angleFact = 1 + attenuationOnSlip * (Math.cos(Math.PI * nextCheckpointAngle / 180) - 1) / 2;
         int thrust = Math.min((int)(distFact * angleFact), 100);
 
         return nextCheckpoint.getX() + " " + nextCheckpoint.getY() + " " + thrust;
