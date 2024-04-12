@@ -5,10 +5,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Scanner;
 
-/**
- * Auto-generated code below aims at helping you parse
- * the standard input according to the problem statement.
- **/
 class Player {
 
     Point player;
@@ -53,6 +49,10 @@ class Player {
     {
         // game loop
         while (true) {
+            /*
+              Auto-generated code below aims at helping you parse
+              the standard input according to the problem statement.
+             */
             player.setX(in.nextInt());
             player.setY(in.nextInt());
             nextCheckpoint.setX(in.nextInt()); // x position of the next check point
@@ -78,6 +78,8 @@ class Player {
             determineTrack();
             System.err.println("Lap: " + lap + " Segment: " + currentSegment);
             System.err.println("BOOST available on segment " + maxSegment + ": " + boostAvailable );
+            System.err.println("Bearing: " + nextCheckpointAngle);
+            System.err.println("Distance (in radius): " + (double)nextCheckpointDist/radius);
             System.out.println(output());
         }
     }
@@ -126,13 +128,15 @@ class Player {
 
             return nextCheckpoint.getX() + " " + nextCheckpoint.getY() + " BOOST";
         }
-        double distFactor = ((1 - thrustUponRadius) * nextCheckpointDist
-                - (1 - thrustUponRadius * reduceThreshold ) * radius) / radius / (reduceThreshold - 1);
+        double distFactor = Math.min(((1 - thrustUponRadius) * nextCheckpointDist
+                - (1 - thrustUponRadius * reduceThreshold ) * radius) / radius / (reduceThreshold - 1), 1.0);
         if (nextCheckpointAngle > 90)
             nextCheckpointAngle = 90;
         else if (nextCheckpointAngle < -90)
             nextCheckpointAngle = -90;
         double angleFactor = 1 + attenuationOnSlip * (Math.cos(Math.PI * nextCheckpointAngle / 180) - 1) / 2;
+        System.err.println("Angle attenuation: " + angleFactor);
+        System.err.println("Distance attenuation: " + distFactor);
         int thrust = Math.min((int)(100 * distFactor * angleFactor), 100);
 
         return nextCheckpoint.getX() + " " + nextCheckpoint.getY() + " " + thrust;
