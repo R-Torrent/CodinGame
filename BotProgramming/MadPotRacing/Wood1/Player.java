@@ -13,6 +13,7 @@ class Player {
 
     Point player;
     Point nextCheckpoint;
+    Point finishLine;
     Point opponent;
     int nextCheckpointDist;
     int nextCheckpointAngle;
@@ -68,35 +69,51 @@ class Player {
             // You have to output the target position
             // followed by the power (0 <= thrust <= 100)
             // i.e.: "x y thrust"
+
+
+            if (checkpoints.isEmpty()) {
+                finishLine = (Point)player.clone();
+                checkpoints.add(finishLine);
+            }
             determineTrack();
+            System.err.println("Lap: " + lap + " Segment: " + currentSegment);
+            System.err.println("BOOST available on segment " + maxSegment + ": " + boostAvailable );
             System.out.println(output());
         }
     }
 
     private void determineTrack() {
+        int s = checkpoints.size();
         Point next = (Point)nextCheckpoint.clone();
         currentSegment = checkpoints.indexOf(next);
         switch (currentSegment) {
             case -1:
-                checkpoints.add(next);
+                if (next.distanceTo(finishLine) <= radius) {
+                    finishLine.setX(next.getX());
+                    finishLine.setY(next.getY());
+
+                    distanceSegments = new ArrayList<>(s);
+                    for (int i = 0; i < s; i++)
+                        distanceSegments.add(checkpoints.get(i).distanceTo(checkpoints.get((i + 1) % s)));
+                    double maxDistance = 0.0, d;
+                    for (int i = 0; i < s; i++)
+                        if ((d = distanceSegments.get(i)) > maxDistance) {
+                            maxDistance = d;
+                            maxSegment = i + 1;
+                        }
+                }
+                else
+                    checkpoints.add(next);
                 break;
-            case 0:
+            case 1:
                 if (!firstSegment) {
                     firstSegment = true;
-                    if (++lap == 2) {
-                        int s = checkpoints.size();
-                        distanceSegments = new ArrayList<>(s);
-                        for (int i = s - 1; i < 2 * s - 1; i++)
-                            distanceSegments.add(checkpoints.get(i % s).distanceTo(checkpoints.get((i + 1) % s)));
-                        double maxDistance = 0.0, d;
-                        for (int i = 0; i < s; i++)
-                            if ((d = distanceSegments.get(i)) > maxDistance) {
-                                maxDistance = d;
-                                maxSegment = i;
-                            }
-                    }
+                    ++lap;
                 }
                 break;
+            case 0:
+                currentSegment = s;
+                // fallthrough
             default:
                 firstSegment = false;
         }
@@ -140,7 +157,7 @@ class Player {
         @Override
         public Object clone() {
         try {
-            return (Point)super.clone();
+            return super.clone();
         } catch (CloneNotSupportedException e) {
             return new Point(this.x, this.y);
         } }
