@@ -24,8 +24,10 @@ class Player {
     // race winning fine-tuning!
     final int radius = 600; // checkpoint radius
     final double reduceThreshold = 2.0; // actual breaking distance from checkpoint: radius * reduceThreshold ( >= 1.0 )
-    final double thrustUponRadius = 0.4; // thrust upon reaching the checkpoint radius [0 .. 1.0]
-    final double attenuationOnSlip = 0.6; // thrust attenuation when target checkpoint at 90+ degrees [0 .. 1.0]
+    final double thrustUponRadius = 0.6; // thrust upon reaching the checkpoint radius [0 .. 1.0]
+    final double attenuationOnSlip = 1.0; // thrust attenuation when target checkpoint at cut-off degrees [0 .. 1.0]
+    final int cutOffDegree = 115;
+    final double angleAttenuationSharpness = 4.0;
     final double boostThreshold = 0.8; // activation upon reaching this fraction of the boost segment [0 .. 1.0]
 
     public Player() {
@@ -123,18 +125,19 @@ class Player {
 
     private String output() {
         if (boostAvailable && currentSegment == maxSegment && lap == 2
-                && nextCheckpointDist < distanceSegments.get(currentSegment) * boostThreshold) {
+                && nextCheckpointDist < distanceSegments.get(currentSegment - 1) * boostThreshold) {
             boostAvailable = false;
 
             return nextCheckpoint.getX() + " " + nextCheckpoint.getY() + " BOOST";
         }
         double distFactor = Math.min(((1 - thrustUponRadius) * nextCheckpointDist
                 - (1 - thrustUponRadius * reduceThreshold ) * radius) / radius / (reduceThreshold - 1), 1.0);
-        if (nextCheckpointAngle > 90)
-            nextCheckpointAngle = 90;
-        else if (nextCheckpointAngle < -90)
-            nextCheckpointAngle = -90;
-        double angleFactor = 1 + attenuationOnSlip * (Math.cos(Math.PI * nextCheckpointAngle / 180) - 1) / 2;
+        nextCheckpointAngle = Math.abs(nextCheckpointAngle);
+        if (nextCheckpointAngle > cutOffDegree)
+            nextCheckpointAngle = cutOffDegree;
+        nextCheckpointAngle -= cutOffDegree;
+        double angleFactor = 1 - attenuationOnSlip
+                / (1 + angleAttenuationSharpness * nextCheckpointAngle * nextCheckpointAngle);
         System.err.println("Angle attenuation: " + angleFactor);
         System.err.println("Distance attenuation: " + distFactor);
         int thrust = Math.min((int)(100 * distFactor * angleFactor), 100);
