@@ -34,14 +34,15 @@ enum dir priorities[][4] = {
 
 typedef struct {
 	int i; // row
-	int j: // column
+	int j; // column
 } point_t;
 
 typedef struct move {
 	point_t x; // position, @
 	enum dir d; // direction
 	int p; // priorities, 0 (starting) or 1 (reversed)
-	boolean b; // breaker mode
+	bool b; // breaker mode
+	int o; // X obstacles present
 	struct move *prev;
 } move_t;
 
@@ -65,10 +66,12 @@ void print_list(move_t *list_moves)
 
 bool interact_with_map(char (*map)[C + 1], move_t *move, point_t *teleporters)
 {
+	int jump;
 	switch (map[move->x.i][move->x.j]) {
 	case '$':
 		return true;
 	case 'X':
+		move->o--;
 		map[move->x.i][move->x.j] = ' ';
 		break;
 	case 'S':
@@ -89,24 +92,26 @@ bool interact_with_map(char (*map)[C + 1], move_t *move, point_t *teleporters)
 	case 'B':
 		move->b = !move->b;
 		break;
-	case 'T';
-	// *****  FINISH THIS!
+	case 'T':
+		jump = move->x.i == teleporters->i && move->x.j == teleporters->j;
+		move->x.i = teleporters[jump].i;
+		move->x.j = teleporters[jump].j;
 		break;
 	case ' ': default:
-		// fall through
+		; // fall through
 	}
 	return false;
 }
 
 void advance_Blunder(point_t *x2, point_t *x1, enum dir d)
 {
-	*x2 = *x1
+	*x2 = *x1;
 	switch (d) {
 	case NORTH:
 		x2->i = x1->i - 1;
 		break;
 	case EAST:
-		x2->j = x1->j + 1
+		x2->j = x1->j + 1;
 		break;
 	case WEST:
 		x2->j = x1->j - 1;
@@ -122,15 +127,16 @@ bool is_equal_to(move_t *move1, move_t *move2)
 		&& move1->x.j == move2->x.j
 		&& move1->d == move2->d
 		&& move1->p == move2->p
-		&& move1->b == move2->b;
+		&& move1->b == move2->b
+		&& move1->o == move2->o;
 }
 
-bool check_records(move_t *move, move_t **plist_moves) {
+bool check_records(move_t *move, move_t **plist_moves)
 {
 	move_t *m = *plist_moves;
 
 	while (m) {
-		if (is_equal_to(move, m)
+		if (is_equal_to(move, m))
 			return true;
 		m = m->prev;
 	}
@@ -154,17 +160,23 @@ void change_dir(char (*map)[C + 1], move_t *move)
 	}
 }
 
-void find_symbols(char (*map)[C + 1], char symbol, point_t *x, size_t n)
+int count_symbols(char (*map)[C + 1], char symbol)
 {
-	char (*const row0)[C + 1] = map;
-	char *m = *map;
+	int count = 0;
 
-	while (n--) {
-		while(!(m = strchr(m, symbol)))
-			m = ++map;
-		x->i = map - row0;
-		x++->j = m++ - map;
-	}
+	for (size_t i = 0; i < L; i++)
+		for (char *m = map[i]; strchr(m, symbol); m++)
+			count++;
+	return count;
+}
+
+void find_symbols(char (*map)[C + 1], char symbol, point_t *x)
+{
+	for (size_t i = 0; i < L; i++)
+		for (char *m = map[i]; m = strchr(m, symbol); m++, x++) {
+			x->i = i;
+			x->j = m - map[i];
+		}
 }
 
 int main()
@@ -178,9 +190,10 @@ int main()
     // To debug: fprintf(stderr, "Debug messages...\n");
 
 	point_t teleporters[2];
-	find_symbols(map, 'T', teleporters, 2);
-	move_t move0 = {d = SOUTH}, *list_moves = NULL;
-	find_symbols(map, '@', &move0.x, 1);
+	find_symbols(map, 'T', teleporters);
+	move_t move0 = {.d = SOUTH}, *list_moves = NULL;
+	find_symbols(map, '@', &move0.x);
+	move0.o = count_symbols(map, 'X');
 
 	while (true) {
 		change_dir(map, &move0);
@@ -188,7 +201,7 @@ int main()
 			printf("LOOP\n");
 			break;
 		}
-		advance_Blunder(&move0.x, list_moves->x);
+		advance_Blunder(&move0.x, &list_moves->x, move0.d);
 		if (interact_with_map(map, &move0, teleporters)) {
 			print_list(list_moves);
 			break;
