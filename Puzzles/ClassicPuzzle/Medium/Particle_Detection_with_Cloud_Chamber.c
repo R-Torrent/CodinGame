@@ -39,7 +39,7 @@ char *symbol[] = {
 // speed-of-light (in m/s)
 const int c = 299792458;
 
-int measure_radius(int, int, char (*)[*]);
+float measure_radius(int, int, char (*)[*]);
 enum particle determine_particle(float);
 
 int main()
@@ -66,7 +66,7 @@ int main()
 	// To debug: fprintf(stderr, "Debug messages...\n");
 
 	// measured radius (in m)
-	const int R = measure_radius(h, w, chamber);
+	const float R = measure_radius(h, w, chamber);
 
 	// experimental ratio G = abs(q) / m
 	const float G = 1e6F * GAMMA(V) * V / (B * R * c);
@@ -84,7 +84,7 @@ int main()
 		printf("I just won the Nobel prize in physics !\n");
 		break;
 	default:
-		printf("%s %i\n", symbol[p], R);
+		printf("%s %i\n", symbol[p], (int)round(R / 10) * 10);
 	};
 
 	free(chamber);
@@ -102,11 +102,11 @@ typedef struct {
 	int j; // horizontal dimension
 } vector_t;
 
-int radius_determination(point_t *, int *);
+float radius_determination(point_t *, int *);
 void clear_trajectory(point_t **);
 int cross_product(const vector_t *, const vector_t *);
 
-int measure_radius(int h, int w, char (*chamber)[w + 1])
+float measure_radius(int h, int w, char (*chamber)[w + 1])
 {
 	point_t *trajectory = NULL, *new;
 
@@ -121,8 +121,9 @@ int measure_radius(int h, int w, char (*chamber)[w + 1])
 			}
 
 	// data is deemed admissible only from a subset of the available point triplets
-	int admissible = radius_determination(trajectory, NULL) * 9 / 10;
-	int result = radius_determination(trajectory, &admissible);
+	int admissible = -1;
+	radius_determination(trajectory, &admissible);
+	float result = radius_determination(trajectory, &admissible);
 
 	clear_trajectory(&trajectory);
 	return result;
@@ -132,13 +133,14 @@ int measure_radius(int h, int w, char (*chamber)[w + 1])
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
-int radius_determination(point_t *p, int *threshold)
+float radius_determination(point_t *p, int *threshold)
 {
 	float s = 0.0F;
 	int n = 0, max_cp = 0;
 
 	// using the formula R = abc / (4 * area_circumscribed_triangle_ABC),
-	// takes the average of such point triplets within 90% of the maximimum area
+	// takes the average of only such point triplets forming triangles
+	// within 60% of the largest triangles
 	for (; p; p = p->next)
 		for (point_t *q = p->next; q; q = q->next) {
 			vector_t a = { q->i - p->i, q->j - p->j };
@@ -146,9 +148,11 @@ int radius_determination(point_t *p, int *threshold)
 			for (point_t *r = q->next; r; r = r->next) {
 				vector_t b = { r->i - q->i, r->j - q->j };
 				int cp = abs(a.i * b.j - a.j * b.i); // cross product a * b
-				if (!threshold)
+				if (*threshold < 0)
 					max_cp = MAX(cp, max_cp);
 				else if (cp >= *threshold) {
+					if (!cp)
+						return INFINITY;
 					vector_t c = { p->i - r->i, p->j - r->j };
 					float lb = HYPOT(b);
 					float lc = HYPOT(c);
@@ -157,8 +161,10 @@ int radius_determination(point_t *p, int *threshold)
 				}
 			}
 		}
+	if (*threshold < 0)
+		*threshold = max_cp * 3 / 5;
 
-	return threshold ? (int)round(s / n / 10) * 10 : max_cp;
+	return s / n;
 }
 
 inline int cross_product(const vector_t *a, const vector_t *b)
