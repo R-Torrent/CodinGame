@@ -65,7 +65,6 @@ int main()
 	// Write an answer using printf(). DON'T FORGET THE TRAILING \n
 	// To debug: fprintf(stderr, "Debug messages...\n");
 
-
 	// measured radius (in m)
 	const int R = measure_radius(h, w, chamber);
 
@@ -105,14 +104,22 @@ typedef struct {
 
 #define HYPOT(v) (hypotf((float)v.i, (float)v.j))
 
-void capture_trajectory(point_t **, int, int, char (*)[*]);
 void clear_trajectory(point_t **);
 float cross_product(const vector_t *, const vector_t *);
 
 int measure_radius(int h, int w, char (*chamber)[w + 1])
 {
-	point_t *trajectory = NULL;
-	capture_trajectory(&trajectory, h, w, chamber);
+	point_t *trajectory = NULL, *new;
+
+	// capture the trajectory points; their order of insertion is irrelevant
+	for (int i = 0; i < h; i++)
+		for (int j = 0; j < w; j++)
+			if (chamber[i][j] == ' ') { // add to the head of the list
+				new = malloc(sizeof(point_t));
+				*new = (point_t){i, j};
+				new->next = trajectory;
+				trajectory = new;
+			}
 
 	float r = 0.0F;
 	int n = 0;
@@ -134,40 +141,6 @@ int measure_radius(int h, int w, char (*chamber)[w + 1])
 
 	clear_trajectory(&trajectory);
 	return (int)round(r / n / 10) * 10;
-}
-
-#define tr(i, j) (chamber[(i)][(j)] == ' ')
-
-void capture_trajectory(point_t **ptrajectory, int h, int w, char (*chamber)[w + 1])
-{
-	point_t *new, *last;
-
-	for (int i = 0; i < h; i++) {
-		int j = 0, j1, j2;
-		while (j < w && !tr(i, j))
-			j++;
-		for (j1 = j; j < w && tr(i, j); j++)
-			;
-		for (j2 = j - 1; j2 >= j1; j2--) { // add to the head of the list
-			new = malloc(sizeof(point_t));
-			*new = (point_t){i, j2};
-			new->next = *ptrajectory;
-			*ptrajectory = new;
-		}
-		while (j < w && !tr(i, j))
-			j++;
-		while (j < w && tr(i, j)) { // add to the tail of the list
-			new = malloc(sizeof(point_t));
-			*new = (point_t){i, j++};
-			if ((last = *ptrajectory)) {
-				while (last->next)
-					last = last->next;
-				last->next = new;
-			}
-			else
-				*ptrajectory = new;
-		}
-	}
 }
 
 void clear_trajectory(point_t **ptrajectory)
@@ -196,16 +169,16 @@ enum particle determine_particle(float G)
 #undef X
 
 	enum particle candidate = UNKNOWN;
-	float relative_error = 0.5F;
-	float e;
+	float e, min_relative_error = 0.5F;
+
 	for (enum particle p = 0; p < UNKNOWN; p++)
 		if (!g_p[p]) {
 			if (!G)
 				return p;
 		}
-		else if ((e = fabsf(g_p[p] - G) / g_p[p]) < relative_error) {
+		else if ((e = fabsf(g_p[p] - G) / g_p[p]) < min_relative_error) {
 			candidate = p;
-			relative_error = e;
+			min_relative_error = e;
 		}
 
 	return candidate;
