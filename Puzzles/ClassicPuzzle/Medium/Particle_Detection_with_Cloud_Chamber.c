@@ -55,12 +55,12 @@ int main()
 	scanf("%f", &B);
 	// speed of the particle (speed-of-light unit)
 	float V;
-	scanf("%f", &V);
+	scanf("%f\n", &V);
 
 	char (*chamber)[w + 1] = malloc(h * (w + 1));
 	for (int i = 0; i < h; i++)
 		// lines of ASCII-art picture
-		fgets(chamber[i], w + 1, stdin);
+		scanf("%[^\n]\n", chamber[i]);
 
 	// Write an answer using printf(). DON'T FORGET THE TRAILING \n
 	// To debug: fprintf(stderr, "Debug messages...\n");
@@ -102,10 +102,9 @@ typedef struct {
 	int j; // horizontal dimension
 } vector_t;
 
-#define HYPOT(v) (hypotf((float)v.i, (float)v.j))
-
+int radius_determination(point_t *, int *);
 void clear_trajectory(point_t **);
-float cross_product(const vector_t *, const vector_t *);
+int cross_product(const vector_t *, const vector_t *);
 
 int measure_radius(int h, int w, char (*chamber)[w + 1])
 {
@@ -121,26 +120,50 @@ int measure_radius(int h, int w, char (*chamber)[w + 1])
 				trajectory = new;
 			}
 
-	float r = 0.0F;
-	int n = 0;
-	// takes the overall average for all point triplets
-	// using the formula R = abc / (4 * area_circumscribed_triangle_ABC)
-	for (point_t *x = trajectory; x; x = x->next)
-		for (point_t *y = x->next; y; y = y->next) {
-			vector_t a = { y->i - x->i, y->j - x->j };
+	// data is deemed admissible only from a subset of the available point triplets
+	int admissible = radius_determination(trajectory, NULL) * 9 / 10;
+	int result = radius_determination(trajectory, &admissible);
+
+	clear_trajectory(&trajectory);
+	return result;
+}
+
+#define HYPOT(v) hypotf((float)v.i, (float)v.j)
+
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+
+int radius_determination(point_t *p, int *threshold)
+{
+	float s = 0.0F;
+	int n = 0, max_cp = 0;
+
+	// using the formula R = abc / (4 * area_circumscribed_triangle_ABC),
+	// takes the average of such point triplets within 90% of the maximimum area
+	for (; p; p = p->next)
+		for (point_t *q = p->next; q; q = q->next) {
+			vector_t a = { q->i - p->i, q->j - p->j };
 			float la = HYPOT(a);
-			for (point_t *z = y->next; z; z = z->next) {
-				vector_t b = { z->i - y->i, z->j - y->j };
-				vector_t c = { x->i - z->i, x->j - z->j };
-				float lb = HYPOT(b);
-				float lc = HYPOT(c);
-				r += la * lb * lc / fabsf(cross_product(&a, &c)) / 2;
-				n++;
+			for (point_t *r = q->next; r; r = r->next) {
+				vector_t b = { r->i - q->i, r->j - q->j };
+				int cp = abs(a.i * b.j - a.j * b.i); // cross product a * b
+				if (!threshold)
+					max_cp = MAX(cp, max_cp);
+				else if (cp >= *threshold) {
+					vector_t c = { p->i - r->i, p->j - r->j };
+					float lb = HYPOT(b);
+					float lc = HYPOT(c);
+					s += la * lb * lc / (cp << 1);
+					n++;
+				}
 			}
 		}
 
-	clear_trajectory(&trajectory);
-	return (int)round(r / n / 10) * 10;
+	return threshold ? (int)round(s / n / 10) * 10 : max_cp;
+}
+
+inline int cross_product(const vector_t *a, const vector_t *b)
+{
+	return a->i * b->j - a->j * b->i;
 }
 
 void clear_trajectory(point_t **ptrajectory)
@@ -152,11 +175,6 @@ void clear_trajectory(point_t **ptrajectory)
 		free(*ptrajectory);
 		*ptrajectory = next;
 	}
-}
-
-inline float cross_product(const vector_t *a, const vector_t *b)
-{
-	return a->i * b->j - a->j * b->i;
 }
 
 enum particle determine_particle(float G)
