@@ -104,7 +104,6 @@ typedef struct {
 
 float radius_determination(point_t *, int *);
 void clear_trajectory(point_t **);
-int cross_product(const vector_t *, const vector_t *);
 
 float measure_radius(int h, int w, char (*chamber)[w + 1])
 {
@@ -165,11 +164,6 @@ float radius_determination(point_t *p, int *threshold)
 		*threshold = max_cp * 3 / 5;
 
 	return s / n;
-}
-
-inline int cross_product(const vector_t *a, const vector_t *b)
-{
-	return a->i * b->j - a->j * b->i;
 }
 
 void clear_trajectory(point_t **ptrajectory)
