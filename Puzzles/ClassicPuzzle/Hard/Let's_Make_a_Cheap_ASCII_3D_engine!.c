@@ -116,9 +116,8 @@ void trace_rays(frame_col_t *fcol, wall_t *list, int X, int Y, int A)
 {
 	for (int a = -30; a < 31; a++, fcol++) {
 		int angle = (A + a);
-		int angle1 = (A - a);
 		const double tan_angle = tan(angle * d_to_r);
-		const double cos_angle1 = cos(angle1 * d_to_r);
+		const double cos_a = cos(a * d_to_r);
 		double candidate;
 		*fcol = (frame_col_t){ .D = 20 * 100 * 1.5 };
 		for (wall_t *segment = list; segment; segment = segment->next) {
@@ -137,15 +136,15 @@ void trace_rays(frame_col_t *fcol, wall_t *list, int X, int Y, int A)
 			case 0: case 7:
 				if (diff_X >= 0) continue; break;
 			case 1: case 2:
-				if (diff_Y <= 0) continue; break;
+				if (diff_Y >= 0) continue; break;
 			case 3: case 4:
 				if (diff_X <= 0) continue; break;
 			case 5: case 6:
-				if (diff_Y >= 0) continue; break;
+				if (diff_Y <= 0) continue; break;
 			}
 			if (segment->l0 <= intersection && intersection <= segment->l1
 				&& (candidate = hypot(diff_X, diff_Y)) < fcol->D)
-				*fcol = (frame_col_t){ segment->t, candidate, candidate * cos_angle1 };
+				*fcol = (frame_col_t){ segment->t, candidate, candidate * cos_a };
 		}
 	}
 }
