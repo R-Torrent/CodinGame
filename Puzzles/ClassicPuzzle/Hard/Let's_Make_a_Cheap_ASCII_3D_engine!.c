@@ -115,27 +115,37 @@ const double d_to_r = 3.14159265 / 180;
 void trace_rays(frame_col_t *fcol, wall_t *list, int X, int Y, int A)
 {
 	for (int a = -30; a < 31; a++, fcol++) {
-		double angle = (A + a) * d_to_r;
-		double angle1 = (A - a) * d_to_r;
+		int angle = (A + a);
+		int angle1 = (A - a);
+		const double tan_angle = tan(angle * d_to_r);
+		const double cos_angle1 = cos(angle1 * d_to_r);
 		double candidate;
 		*fcol = (frame_col_t){ .D = 20 * 100 * 1.5 };
 		for (wall_t *segment = list; segment; segment = segment->next) {
 			double diff_X, diff_Y, intersection;
 			if (segment->t == H) {
 				diff_Y = segment->k - Y;
-				intersection = X + diff_Y / tan(angle);
+				intersection = X + diff_Y / tan_angle;
 				diff_X = intersection - X;
 			}
 			else {
 				diff_X = segment->k - X;
-				intersection = Y + diff_X * tan(angle);
+				intersection = Y + diff_X * tan_angle;
 				diff_Y = intersection - Y;
 			}
-			if (fabs(atan2(diff_Y, diff_X) / d_to_r - (A + a) % 360) > 10)
-				continue;
+			switch ((angle + 179) / 45) {
+			case 0: case 7:
+				if (diff_X >= 0) continue; break;
+			case 1: case 2:
+				if (diff_Y <= 0) continue; break;
+			case 3: case 4:
+				if (diff_X <= 0) continue; break;
+			case 5: case 6:
+				if (diff_Y >= 0) continue; break;
+			}
 			if (segment->l0 <= intersection && intersection <= segment->l1
 				&& (candidate = hypot(diff_X, diff_Y)) < fcol->D)
-				*fcol = (frame_col_t){ segment->t, candidate, candidate * cos(angle1) };
+				*fcol = (frame_col_t){ segment->t, candidate, candidate * cos_angle1 };
 		}
 	}
 }
