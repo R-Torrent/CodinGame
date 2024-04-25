@@ -81,8 +81,8 @@ void read_room(wall_t **plist, char (*room)[21], int N)
 		scanf("%[^\n]\n", room[r]);
 		char row[21];
 		for (char *str = strcpy(row, room[r]); (w = strtok(str, ".")); str = NULL) {
-			int h0 = (w - row) * 100, h1 = h0 + strlen(w) * 100 - 1;
-			int v0 = r * 100, v1 = (r + 1) * 100 - 1;
+			int h0 = (w - row) * 100, h1 = h0 + strlen(w) * 100;
+			int v0 = r * 100, v1 = v0 + 100;
 			segment = malloc(sizeof(wall_t));
 			*segment = (wall_t){ H, v0, h0, h1 }; // top surface
 			add_wall(plist, segment);
@@ -98,8 +98,8 @@ void read_room(wall_t **plist, char (*room)[21], int N)
 			col[r] = room[r][c];
 		col[N] = '\0';
 		for (char *str = col; (w = strtok(str, ".")); str = NULL) {
-			int v0 = (w - col) * 100, v1 = v0 + strlen(w) * 100 - 1;
-			int h0 = c * 100, h1 = (c + 1) * 100 - 1;
+			int v0 = (w - col) * 100, v1 = v0 + strlen(w) * 100;
+			int h0 = c * 100, h1 = h0 + 100;
 			segment = malloc(sizeof(wall_t));
 			*segment = (wall_t){ V, h0, v0, v1 }; // left surface
 			add_wall(plist, segment);
@@ -133,7 +133,7 @@ void trace_rays(frame_col_t *fcol, wall_t *list, int X, int Y, int A)
 				diff_Y = intersection - Y;
 			}
 			switch ((angle + 179) / 45) {
-			case 0: case 7:
+			case 0: case 7: case 8:
 				if (diff_X >= 0) continue; break;
 			case 1: case 2:
 				if (diff_Y >= 0) continue; break;
