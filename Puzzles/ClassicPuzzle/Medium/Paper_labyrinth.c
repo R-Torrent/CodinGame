@@ -1,38 +1,65 @@
-#include <stdlib.h>
+#include <ctype.h>
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdbool.h>
 
 /*
  * Paper labyrinth
  * Puzzles > Classic Puzzle > Medium
  */
 
-/**
- * Auto-generated code below aims at helping you parse
- * the standard input according to the problem statement.
- **/
+#define Node(X, Y) ((X) + w * (Y))
 
 int main()
 {
-	int xs;
-	int ys;
+	int xs, ys;
 	scanf("%d%d", &xs, &ys);
-	int xr;
-	int yr;
+	int xr, yr;
 	scanf("%d%d", &xr, &yr);
-	int w;
-	int h;
+	int w, h;
 	scanf("%d%d", &w, &h);
-	for (int i = 0; i < h; i++) {
+	const int N = h * w;
+	char (*maze)[h] = malloc(N);
+	char (*dist)[h * w] = malloc(N * N);
+	for (int y = 0; y < h; y++) {
 		char l[w + 1];
 		scanf("%s", l);
+		for (int x = 0; x < w; x++) 
+			maze[x][y] = isdigit(l[x]) ? l[x] - '0' : l[x] - 'a' + 10;
 	}
 
-	// Write an answer using printf(). DON'T FORGET THE TRAILING \n
-	// To debug: fprintf(stderr, "Debug messages...\n");
+	// Floyd-Warshall algorithm
+	// [https://en.wikipedia.org/wiki/Floyd%E2%80%93Warshall_algorithm]
+	memset(dist, CHAR_MAX, N * N);
+	for (int y = 0; y < h; y++)
+	for (int x = 0; x < w; x++) {
+		dist[Node(x, y)][Node(x, y)] = 0;
+		if (!(maze[x][y] & 1) && y < h - 1)
+			dist[Node(x, y)][Node(x, y + 1)] = 1;
+		if (!(maze[x][y] & 2) && x > 0)
+			dist[Node(x, y)][Node(x - 1, y)] = 1;
+		if (!(maze[x][y] & 4) && y > 0)
+			dist[Node(x, y)][Node(x, y - 1)] = 1;
+		if (!(maze[x][y] & 8) && x < w - 1)
+			dist[Node(x, y)][Node(x + 1, y)] = 1;
+	}
+	for (int yk = 0; yk < h; yk++)
+	for (int xk = 0; xk < w; xk++)
+		for (int yi = 0; yi < h; yi++)
+		for (int xi = 0; xi < w; xi++)
+			for (int yj = 0; yj < h; yj++)
+			for (int xj = 0; xj < w; xj++) {
+				int d = dist[Node(xi, yi)][Node(xk, yk)]
+					+ dist[Node(xk, yk)][Node(xj, yj)];
+				if (dist[Node(xi, yi)][Node(xj, yj)] > d)
+					dist[Node(xi, yi)][Node(xy, yj)] = d;
+			}
 
-	printf("go return\n");
+	printf("%hhd %hhd\n",
+		dist[Node(xs, ys)][Node(xr, yr)], dist[Node(xy, yr)][Node (xs, ys)]);
+
+	free(maze);
+	free(dist)
 
 	return 0;
 }
