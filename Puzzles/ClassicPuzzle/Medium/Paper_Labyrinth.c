@@ -1,10 +1,11 @@
 #include <ctype.h>
 #include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /*
- * Paper labyrinth
+ * Paper Labyrinth
  * Puzzles > Classic Puzzle > Medium
  */
 
@@ -24,7 +25,7 @@ int main()
 	for (int y = 0; y < h; y++) {
 		char l[w + 1];
 		scanf("%s", l);
-		for (int x = 0; x < w; x++) 
+		for (int x = 0; x < w; x++)
 			maze[x][y] = isdigit(l[x]) ? l[x] - '0' : l[x] - 'a' + 10;
 	}
 
@@ -52,14 +53,14 @@ int main()
 				int d = dist[Node(xi, yi)][Node(xk, yk)]
 					+ dist[Node(xk, yk)][Node(xj, yj)];
 				if (dist[Node(xi, yi)][Node(xj, yj)] > d)
-					dist[Node(xi, yi)][Node(xy, yj)] = d;
+					dist[Node(xi, yi)][Node(xj, yj)] = d;
 			}
 
 	printf("%hhd %hhd\n",
-		dist[Node(xs, ys)][Node(xr, yr)], dist[Node(xy, yr)][Node (xs, ys)]);
+		dist[Node(xs, ys)][Node(xr, yr)], dist[Node(xr, yr)][Node (xs, ys)]);
 
 	free(maze);
-	free(dist)
+	free(dist);
 
 	return 0;
 }
