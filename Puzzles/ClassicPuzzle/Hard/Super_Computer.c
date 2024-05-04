@@ -1,6 +1,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+/*
+ * Super Computer
+ * Puzzles > Classic Puzzle > Hard
+ */
+
 // Greedy algorithm solution:
 // https://en.wikipedia.org/wiki/Activity_selection_problem
 
