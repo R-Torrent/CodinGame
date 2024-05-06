@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 
 /*
  * Fill the Square!
@@ -6,35 +7,6 @@
  */
 
 #define MAP(I, J) ((I) * N + (J))
-
-int minor(int [][225], int, int, int);
-
-int det(int A[][225], int N)
-{
-	int d = 0;
-	for (int j = 0; j < N; j++)
-		d += A[0][j] * minor(A, 0, j, N);
-
-	return d;
-}
-
-int minor(int A[][225], int i_skip, int j_skip, int N)
-{
-	int Min[225][225];
-	for (int i = 0, i1 = 0; i < N; i++) {
-		if (i == i_skip)
-			continue;
-		for (int j = 0, j1 = 0; j < N; j++) {
-			if (j == j_skip)
-				continue;
-			Min[i1][j1] = A[i][j];
-			j1++;
-		}
-		i1++;
-	}
-
-	return ((i_skip + j_skip) % 2 ? -1 : 1) * (--N == 1 ? Min[0][0] : det(Min, N));
-}
 
 int main()
 {
@@ -44,7 +16,8 @@ int main()
 // Problem: {A X + B}(mod 2) = C(mod 2)
 // --> X = A^(-1) {C - B}
 
-	int A[225][225], C_B[225];
+	int A[225][450], C_B[225];
+	memset(A, 0, 101250 * sizeof(int));
 	for (int i = 0; i < N; i++) {
 		char ROW[16];
 		scanf("%[^\n]", ROW); fgetc(stdin);
@@ -59,22 +32,38 @@ int main()
 				A[MAP(i, j)][MAP(i + 1, j)] = 1;
 			if (j < N - 1)
 				A[MAP(i, j)][MAP(i, j + 1)] = 1;
+			A[MAP(i, j)][225 + MAP(i, j)] = 1;
 		}
 	}
 
-	int X[225], Adj[225][225], N2 = N * N;
-	// Adj: Adjunct matrix
-	for (int i = 0; i < N2; i++)
-		for (int j = 0; j < N2; j++)
-			Adj[j][i] = minor(A, i, j, N2);
+// A^(-1) by Gaussian elimination
+	int X[225], N2 = N * N;
+	for (int i1 = 0; i1 < N2; i1++) {
+		if (!A[i1][i1]) {
+			int i2;
+			for (i2 = i1 + 1; !A[i2][i1] && i2 < N2; i2++)
+				;
+			for (int j = 0; j < N2; j++) {
+				A[i1][j] ^= A[i2][j];
+				A[i1][225 + j] ^= A[i2][225 + j];
+			}
+		}
+		for (int i = 0; i < N2; i++)
+			if (i != i1 && A[i][i1])
+				for (int j = 0; j < N2; j++) {
+					A[i][j] ^= A[i1][j];
+					A[i][225 + j] ^= A[i1][225 + j];
+				}
+	}
 	for (int i = 0; i < N2; i++) {
 		X[i] = 0;
 		for (int j = 0; j < N2; j++)
-			X[i] += Adj[i][j] * C_B[j];
+			X[i] ^= A[i][225 + j] * C_B[j];
 	}
+
 	for (int i = 0; i < N; i++) {
 		for (int j = 0; j < N; j++)
-			putchar(X[MAP(i, j)] % 2 ? 'X' : '.');
+			putchar(X[MAP(i, j)] ? 'X' : '.');
 		putchar('\n');
 	}
 
