@@ -94,7 +94,7 @@ bool is_valid(char *expr, int size)
 
 void evaluates_to_N(int *sol, int pushes, stack_t *st, char *expr, int size)
 {
-	if (!size-- || pushes >= *sol) // cut branch
+	if (pushes >= *sol) // cut branch
 		return;
 	if (st->sp) {
 		int op = pop(st);
@@ -104,6 +104,8 @@ void evaluates_to_N(int *sol, int pushes, stack_t *st, char *expr, int size)
 		}
 		push(st, op);
 	}
+	if (!size--)
+		return;
 
 	if (*expr++) { // push value 'a'
 		push(st, a);
