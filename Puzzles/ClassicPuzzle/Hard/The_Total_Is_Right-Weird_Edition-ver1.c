@@ -1,6 +1,16 @@
+// First attempt on this hard problem: 60% score
+// It works as intended, however, it timeouts for 'solution' >= 9. The algorithm
+// might be salvaged through memoization, but it will never reach the target 12
+// of the last Test case.
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
+
+/*
+ * The Total Is Right - Weird Edition
+ * Puzzles > Classic Puzzle > Hard
+ */
 
 /*
  * Solved using Reversed Polish Notation, to avoid the use of parentheses.
@@ -15,12 +25,11 @@
  * operators
  */
 
-#define LIMIT 12 // game's limit on the number of operations
-#define DEPTH (LIMIT + 1) // maximum depth of stack
+#define LIMIT 12 // game's limit on the appearances of number 'a'
 
 typedef struct {
 	int sp; // next free stack position
-	int stack[DEPTH];
+	int stack[LIMIT];
 } stack_t;
 
 bool is_valid(char *, int);
@@ -37,15 +46,15 @@ int main()
 {
 	scanf("%d%d", &N, &a);
 
-	char expr[2 * LIMIT + 1];
+	const int size = 2 * LIMIT - 1;
+	char expr[2 * LIMIT - 1];
 	int sol = LIMIT + 1;
 
-	int size = 2 * LIMIT + 1;
 	expr[0] = expr[1] = 1; // 1 == 'a' in the above explanation
 	expr[size - 1] = 0;    // 0 == 'o' in the above explanation
 	// starting expr = a a (a a a ... a o ... o o o) o
 	for (int i = 2; i < size - 1; i++)
-		expr[i] = i <= LIMIT;
+		expr[i] = i < LIMIT;
 
 	while (true) {
 		stack_t st = { .sp = 0 };
@@ -94,7 +103,7 @@ bool is_valid(char *expr, int size)
 
 void evaluates_to_N(int *sol, int pushes, stack_t *st, char *expr, int size)
 {
-	if (!size-- || pushes >= *sol) // cut branch
+	if (pushes >= *sol) // cut branch
 		return;
 	if (st->sp) {
 		int op = pop(st);
@@ -104,6 +113,8 @@ void evaluates_to_N(int *sol, int pushes, stack_t *st, char *expr, int size)
 		}
 		push(st, op);
 	}
+	if (!size--)
+		return;
 
 	if (*expr++) { // push value 'a'
 		push(st, a);
@@ -136,7 +147,7 @@ void evaluates_to_N(int *sol, int pushes, stack_t *st, char *expr, int size)
 void duplicate_stack(stack_t *dst, stack_t *src)
 {
 	dst->sp = src->sp;
-	for (int i = 0; i < DEPTH; i++)
+	for (int i = 0; i < LIMIT; i++)
 		dst->stack[i] = src->stack[i];
 }
 
