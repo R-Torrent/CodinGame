@@ -20,7 +20,7 @@ int main()
 	for (int i = 0; i < N; i++) {
 		float n;
 		scanf("%f%f", &y[i], &n);
-		xt[0][i] = x[i][0] = 1.0;               // 1
+		xt[0][i] = x[i][0] = 1.0F;              // 1
 		xt[1][i] = x[i][1] = logf(n);           // log(n)
 		xt[2][i] = x[i][2] = n;                 // n
 		xt[3][i] = x[i][3] = x[i][1] * x[i][2]; // n * log(n)
@@ -33,11 +33,11 @@ int main()
 	for (int i = 0; i < 8; i++)
 		for (int j = 0; j < 8; j++) {
 			xt_x[i][j] = 0;
-			for (int k = 0; k < 999; k++)
+			for (int k = 0; k < N; k++)
 				xt_x[i][j] += xt[i][k] * x[k][j];
 		}
 
-	printf("answer\n");
+	printf("%s\n", answer[0]);
 
 	return 0;
 }
