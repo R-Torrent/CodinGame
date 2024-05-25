@@ -23,7 +23,7 @@ int main()
 	float y[999], x[999][8], xt[8][999], xt_x[8][8], xt_y[8], b[8];
 	for (int i = 0; i < N; i++) {
 		float n;
-		scanf("%f%f", &y[i], &n);
+		scanf("%f%f", &n, &y[i]);
 		xt[0][i] = x[i][0] = 1.0F;              // 1
 		xt[1][i] = x[i][1] = logf(n);           // log(n)
 		xt[2][i] = x[i][2] = n;                 // n
@@ -70,7 +70,7 @@ float determinant(int n, float matrix[][8])
 
 float minor(int n, float matrix[][8], int i, int j)
 {
-	float m = 1.0F, min[8][8];
+	float m[8][8];
 
 	if (n > 1) {
 		for (int k = 0, km = 0; k < n; k++) {
@@ -79,13 +79,14 @@ float minor(int n, float matrix[][8], int i, int j)
 			for (int l = 0, lm = 0; l < n; l++) {
 				if (l == j)
 					continue;
-				min[km][lm] = matrix[k][l];
+				m[km][lm] = matrix[k][l];
 				lm++;
 			}
 			km++;
 		}
-		m *= determinant(n - 1, min);
+
+		return determinant(n - 1, m);
 	}
 
-	return m;
+	return 1.0F;
 }
