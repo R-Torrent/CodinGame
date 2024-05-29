@@ -17,7 +17,7 @@ int main()
 		scanf("%d", speed_snail + snail);
 
 	int map_height, map_width;
-	scanf("%d%d", &map_height, &map_width);
+	scanf("%d%d\n", &map_height, &map_width);
 
 	char map[6][10], starting_positions[6][2];
 	for (int r = 0; r < map_height; r++) {
@@ -32,7 +32,7 @@ int main()
 	}
 
 	int time_to_targets[6];
-	for (int snail = 0; snail < 6; snail++)
+	for (int snail = 0; snail < number_snails; snail++)
 		time_to_targets[snail] = 13;
 	for (int r = 0; r < map_height; r++)
 		for (int c = 0; c < map_width; c++)
