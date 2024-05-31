@@ -23,11 +23,12 @@ int main()
 
 /*
  * y: response variables
- * x: regressors
- * xt: transpose of x
- * xt_x: Gram matrix (xt * x)
- * xt_y: moment matrix (xt * y)
- * inv_xt_x: inverse of Gram matrix
+ * x: design matrix (xi: regressors)
+ * trx: transpose of x
+ * trx_x: Gram matrix (trx * x)
+ * trx_y: moment matrix (trx * y)
+ * dettrx_x: determinant of Gram matrix
+ * invtrx_x: inverse of Gram matrix
  * b: unknown coefficients
  * s2: estimate of variance
  * ei: random error
@@ -35,44 +36,44 @@ int main()
  * t: t-statistic of the coefficients
  */
 
-	double y[999], x[999][8], xt[8][999];
+	double y[999], x[999][8];
 	int found_inf = 0, p;
 	for (int i = 0; i < N; i++) {
 		double n;
 		scanf("%lf%lf", &n, &y[i]);
-		xt[0][i] = x[i][0] = 1.0;               // 1
-		xt[1][i] = x[i][1] = log(n);            // log(n)
-		xt[2][i] = x[i][2] = n;                 // n
-		xt[3][i] = x[i][3] = x[i][1] * x[i][2]; // n * log(n)
-		xt[4][i] = x[i][4] = x[i][2] * x[i][2]; // n ^ 2
-		xt[5][i] = x[i][5] = x[i][1] * x[i][4]; // n ^ 2 * log(n)
-		xt[6][i] = x[i][6] = x[i][2] * x[i][4]; // n ^ 3
+		x[i][0] = 1.0;                 // 1
+		x[i][1] = log(n);              // log(n)
+		x[i][2] = n;                   // n
+		x[i][3] = x[i][1] * x[i][2];   // n * log(n)
+		x[i][4] = x[i][2] * x[i][2];   // n ^ 2
+		x[i][5] = x[i][1] * x[i][4];   // n ^ 2 * log(n)
+		x[i][6] = x[i][2] * x[i][4];   // n ^ 3
 		if (!found_inf) {
-			xt[7][i] = x[i][7] = pow(2.0, n);   // 2 ^ n
+			x[i][7] = pow(2.0, n); // 2 ^ n
 			if (isinf(x[i][7]))
 				found_inf = 1;
 		}
 	}
 	p = found_inf ? 7 : 8;
 
-	double xt_x[8][8], xt_y[8];
+	double trx_x[8][8], trx_y[8];
 	for (int i = 0; i < p; i++) {
 		for (int j = 0; j < p; j++) {
-			xt_x[i][j] = 0.0;
+			trx_x[i][j] = 0.0;
 			for (int k = 0; k < N; k++)
-				xt_x[i][j] += xt[i][k] * x[k][j];
+				trx_x[i][j] += x[k][i] * x[k][j];
 		}
-		xt_y[i] = 0.0;
+		trx_y[i] = 0.0;
 		for (int j = 0; j < N; j++)
-			xt_y[i] += xt[i][j] * y[j];
+			trx_y[i] += x[j][i] * y[j];
 	}
-	double det_xt_x = determinant(p, xt_x), inv_xt_x[8][8], b[8];
+	double dettrx_x = determinant(p, trx_x), invtrx_x[8][8], b[8];
 	for (int i = 0; i < p; i++) {
 		b[i] = 0.0;
 		for (int j = 0; j < p; j++) {
-			inv_xt_x[i][j] = ((i + j) % 2 ? -1 : 1) * minor(p, xt_x, j, i)
-					/ det_xt_x;
-			b[i] += inv_xt_x[i][j] * xt_y[j];
+			invtrx_x[i][j] = ((i + j) % 2 ? -1 : 1) * minor(p, trx_x, j, i)
+					/ dettrx_x;
+			b[i] += invtrx_x[i][j] * trx_y[j];
 		}
 	}
 	double s2 = 0.0;
@@ -85,12 +86,12 @@ int main()
 	s2 /= N - p;
 	double s[8], t[8];
 	for (int i = 0; i < p; i++) {
-		s[i] = sqrt(s2 * inv_xt_x[i][i]);
+		s[i] = sqrt(s2 * invtrx_x[i][i]);
 		t[i] = b[i] / s[i];
 	}
 
 	while (p > 0)
-		if (fabs(t[--p]) > 1.0 ) // the corresponding coefficient is not zero
+		if (fabs(t[--p]) > 3.0 ) // the corresponding coefficient is not zero
 			break;
 	if (!p) {
 		printf("Error: Linear regression failed!\n");
