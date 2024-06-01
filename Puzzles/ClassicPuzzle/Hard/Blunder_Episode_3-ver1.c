@@ -1,3 +1,6 @@
+// First attempt on this hard problem: 50% score
+// Salvaged version cannot identify the last three cases.
+
 #include <math.h>
 #include <stdio.h>
 
@@ -46,15 +49,16 @@ int main()
 		x[i][2] = n;                   // n
 		x[i][3] = x[i][1] * x[i][2];   // n * log(n)
 		x[i][4] = x[i][2] * x[i][2];   // n ^ 2
-		x[i][5] = x[i][1] * x[i][4];   // n ^ 2 * log(n)
+/*		x[i][5] = x[i][1] * x[i][4];   // n ^ 2 * log(n)
 		x[i][6] = x[i][2] * x[i][4];   // n ^ 3
 		if (!found_inf) {
 			x[i][7] = pow(2.0, n); // 2 ^ n
 			if (isinf(x[i][7]) || n > 50)
 				found_inf = 1;
-		}
+		} */
 	}
-	p = found_inf ? 7 : 8;
+	//p = found_inf ? 7 : 8;
+	p = 5;
 
 	double trx_x[8][8], trx_y[8];
 	for (int i = 0; i < p; i++) {
