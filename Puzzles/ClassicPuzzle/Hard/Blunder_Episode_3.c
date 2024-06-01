@@ -50,7 +50,7 @@ int main()
 		x[i][6] = x[i][2] * x[i][4];   // n ^ 3
 		if (!found_inf) {
 			x[i][7] = pow(2.0, n); // 2 ^ n
-			if (isinf(x[i][7]))
+			if (isinf(x[i][7]) || n > 50)
 				found_inf = 1;
 		}
 	}
@@ -90,15 +90,14 @@ int main()
 		t[i] = b[i] / s[i];
 	}
 
+	double max_t = 0.0, tp;
+	int max_p;
 	while (p > 0)
-		if (fabs(t[--p]) > 3.0 ) // the corresponding coefficient is not zero
-			break;
-	if (!p) {
-		printf("Error: Linear regression failed!\n");
-		return 1;
-	}
-
-	printf("%s\n", answer[p]);
+		if ((tp = fabs(t[--p])) > max_t) {
+			max_t = tp;
+			max_p = p;
+		}
+	printf("%s\n", answer[max_p]);
 	return 0;
 }
 
