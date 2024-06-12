@@ -1,42 +1,70 @@
-#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdbool.h>
 
-/**
- * Auto-generated code below aims at helping you parse
- * the standard input according to the problem statement.
- **/
+/*
+ * Summer Challenge 2024
+ * Contest
+ */
+
+/*
+ * Wood 2 League
+ */
+
+#define TURN \
+X(LEFT, 1)   \
+X(DOWN, 2)   \
+X(RIGHT, 3)  \
+X(UP, 2)
+
+#define X(a, b) #a,
+char *output[] = {
+	TURN
+};
+#undef X
+
+#define X(a, b) a,
+enum op {
+	TURN
+};
+#undef X
+
+typedef struct {
+	char gpu[65];
+	int reg[7];
+} register_t;
 
 int main()
 {
-	int player_idx;
-	scanf("%d", &player_idx);
-	int nb_games;
-	scanf("%d", &nb_games); fgetc(stdin);
+	int player_idx, nb_games;
+	scanf("%d%d", &player_idx, &nb_games);
 
 	// game loop
 	while (1) {
-		for (int i = 0; i < 3; i++) {
-			char score_info[65];
-			scanf("%[^\n]", score_info); fgetc(stdin);
-		}
-		for (int i = 0; i < nb_games; i++) {
-			char gpu[65];
-			int reg_0;
-			int reg_1;
-			int reg_2;
-			int reg_3;
-			int reg_4;
-			int reg_5;
-			int reg_6;
-			scanf("%s%d%d%d%d%d%d%d", gpu, &reg_0, &reg_1, &reg_2, &reg_3, &reg_4, &reg_5, &reg_6); fgetc(stdin);
-		}
+		char score_info[3][65];
+		for (int i = 0; i < 3; i++)
+			scanf("\n%[^\n]\n", score_info[i]);
+		register_t *reg, registers[4];
+		for (reg = registers; reg - registers < nb_games; reg++) {
+			scanf("%s", reg->gpu);
+			for (int i = 0; i < 7; i++)
+				scanf("%d", reg->reg + i);
+		};
 
-		// Write an action using printf(). DON'T FORGET THE TRAILING \n
-		// To debug: fprintf(stderr, "Debug messages...\n");
-
-		printf("LEFT\n");
+		reg = registers;
+		int len = strlen(reg->gpu);     // track length
+		int pos = reg->reg[player_idx]; // current position
+		int aim;                        // position runner aims at
+		for (aim = pos; aim < len && reg->gpu[aim] == '.'; aim++)
+			;
+		int stretch = aim - pos;
+		char *order;
+		switch (stretch) {
+			case 1: order = output[UP]; break;
+			case 2: order = output[LEFT]; break;
+			case 3: order = output[DOWN]; break;
+			default: order = output[RIGHT]; // includes reset turn, 'GAME_OVER'
+		}
+		printf("%s\n", order);
 	}
 
 	return 0;
