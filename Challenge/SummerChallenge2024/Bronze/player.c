@@ -10,22 +10,42 @@
  */
 
 #define TURN \
-X(LEFT, 1)   \
-X(DOWN, 2)   \
-X(RIGHT, 3)  \
-X(UP, 2)
+X(LEFT)      \
+X(DOWN)      \
+X(RIGHT)     \
+X(UP)        \
+X(NUMBER_OPS) // 4
 
-#define X(a, b) #a,
+#define X(a) #a,
 char *output[] = {
 	TURN
 };
 #undef X
 
-#define X(a, b) a,
-enum op {
+#define X(a) a,
+enum ops {
 	TURN
 };
 #undef X
+
+#define MGAME           \
+Y(HURDLE_RACE)          \
+Y(ARCHERY)              \
+Y(ROLLER_SPEED_SKATING) \
+Y(DIVING)               \
+Y(NUMBER_MGAMES) // 4
+
+#define Y(a) #a,
+char *played[] = {
+	MGAME
+};
+#undef Y
+
+#define Y(a) a,
+enum games {
+	MGAME
+};
+#undef Y
 
 #define TRACK_LEN 30
 
@@ -33,6 +53,15 @@ typedef struct {
 	char gpu[65];
 	int reg[7];
 } register_t;
+
+typedef short array_scores[NUMBER_OPS];
+
+void hurdles(register_t *, array_scores *);
+void archery(register_t *, array_scores *);
+void skating(register_t *, array_scores *);
+void diving(register_t *, array_scores *);
+
+typedef void (*func_mgame)(register_t *, array_scores *);
 
 int main()
 {
@@ -51,7 +80,51 @@ int main()
 				scanf("%d", reg->reg + i);
 		};
 
-		// Four simultaneous Hurdle Race mini-games
+		func_mgame mgames[] = { hurdles, archery, skating, diving };
+		array_scores indiv[NUMBER_MGAMES]; // 4 mini-game scores
+		enum games mg;
+		for (mg = 0; mg < nb_games; mg++)
+			mgames[mg](registers + mg, indiv + mg);
+		array_scores *sc, tally = { 0 }; // combined scores
+		enum ops op;
+		for (sc = indiv; sc - indiv < nb_games; sc++)
+			for (op = 0; op < NUMBER_OPS; op++)
+				tally[op] += (*sc)[op];
+		enum ops max_op;
+		short max_score = 0;
+		for (op = 0; op < NUMBER_OPS; op++)
+			if (tally[op] > max_score) {
+				max_score = tally[op];
+				max_op = op;
+			}
+
+		printf("%s\n", output[max_op]);
+	}
+
+	return 0;
+}
+
+// Hurdle Race mini-game
+void hurdles(register_t *reg, array_scores *sc)
+{
+}
+
+// Archery mini-game
+void archery(register_t *reg, array_scores *sc)
+{
+}
+
+// Roller Speed Skating
+void skating(register_t *reg, array_scores *sc)
+{
+}
+
+// Diving
+void diving(register_t *reg, array_scores *sc)
+{
+}
+
+/*
 		int min_stretch = 5, stretch;
 		for (reg = registers; reg - registers < nb_games; reg++) {
 			int pos = reg->reg[player_idx]; // current position
@@ -72,8 +145,5 @@ int main()
 			case 3: order = output[DOWN]; break;
 			default: order = output[RIGHT];
 		}
-		printf("%s\n", order);
 	}
-
-	return 0;
-}
+*/
