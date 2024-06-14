@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 
 /*
  * Summer Challenge 2024
@@ -6,24 +7,30 @@
  */
 
 /*
- * Bronze League
+ * Silver League
  */
 
-#define TURN \
-X(UP)        \
-X(DOWN)      \
-X(LEFT)      \
-X(RIGHT)     \
-X(NUMBER_OPS) // 4
+#define TURN    \
+X(UP, U)        \
+X(DOWN, D)      \
+X(LEFT, L)      \
+X(RIGHT, R)     \
+X(NUMBER_OPS, N) // 4
 
-#define X(a) #a,
+#define X(a, b) #a,
 char *output[] = {
 	TURN
 };
 #undef X
 
-#define X(a) a,
+#define X(a, b) a,
 enum ops {
+	TURN
+};
+#undef X
+
+#define X(a, b) 'b',
+char initials[] = {
 	TURN
 };
 #undef X
@@ -61,6 +68,8 @@ void diving(register_t *, array_scores *);
 
 typedef void (*func_mgame)(register_t *, array_scores *);
 
+#define GAMEOVER "GAME_OVER"
+
 int player_idx, loop;
 
 int main()
@@ -80,7 +89,7 @@ int main()
 				scanf("%d", reg->reg + i);
 		};
 
-		fprintf(stderr, "** Turn #%03d **\n", ++loop);
+		fprintf(stderr, "** Turn #%03d **\n", loop++);
 
 		func_mgame mgames[] = { hurdles, archery, skating, diving };
 		array_scores indiv[NUMBER_MGAMES]; // 4 mini-game scores
@@ -112,8 +121,6 @@ int main()
 
 	return 0;
 }
-
-#define GAMEOVER = "GAME_OVER"
 
 #define TRACK_LEN 30
 
@@ -171,7 +178,21 @@ void skating(register_t *reg, array_scores *sc)
 {
 }
 
+int action;
+
 // Diving
 void diving(register_t *reg, array_scores *sc)
 {
+	if (!strcmp(reg->gpu, GAMEOVER)) {
+		(*sc)[UP] = 0;
+		(*sc)[DOWN] = 0;
+		(*sc)[LEFT] = 0;
+		(*sc)[RIGHT] = 0;
+		action = 0;
+		return;
+	}
+
+	char correct = reg->gpu[action++];
+	for (enum ops op = 0; op < NUMBER_OPS; op++)
+		(*sc)[op] = initials[op] == correct ? (2 * reg->reg[player_idx + 3]) : 0;
 }
