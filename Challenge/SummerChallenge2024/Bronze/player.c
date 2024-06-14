@@ -131,28 +131,28 @@ void hurdles(register_t *reg, array_scores *sc)
 
 	int pos = reg->reg[player_idx]; // current position
 	int aim;                        // position runner aims at
-	for (aim = pos; aim < TRACK_LEN && reg->gpu[aim] == '.'; aim++)
+	for (aim = pos + 1; aim < TRACK_LEN && reg->gpu[aim] == '.'; aim++)
 		;
-	switch (aim - pos) {
-	case 1: // next to hurdle or finish line
-		(*sc)[UP] = aim != TRACK_LEN ? 10 : 0;
-		(*sc)[DOWN] = 0;
-		(*sc)[LEFT] = 0;
-		(*sc)[RIGHT] = 0;
+	switch (aim - pos) { // finish line = TRACK_LEN - 1
+	case 1: // next to hurdle
+		(*sc)[UP] = 12;
+		(*sc)[DOWN] = -2;
+		(*sc)[LEFT] = -2;
+		(*sc)[RIGHT] = -2;
 		return;
-	case 2: // one space to hurdle or finish line
-		(*sc)[UP] = aim != TRACK_LEN ? 0 : 10;
-		(*sc)[DOWN] = aim != TRACK_LEN ? 0 : 10;
-		(*sc)[LEFT] = aim != TRACK_LEN ? 10 : 5;
-		(*sc)[RIGHT] = aim != TRACK_LEN ? 0 : 10;
+	case 2: // one space to hurdle or next to finish line
+		(*sc)[UP] = aim != TRACK_LEN ? -2 : 0;
+		(*sc)[DOWN] = aim != TRACK_LEN ? -2 : 0;
+		(*sc)[LEFT] = aim != TRACK_LEN ? 12 : 0;
+		(*sc)[RIGHT] = aim != TRACK_LEN ? -2 : 0;
 		return;
-	case 3: // two spaces to hurdle ot finish line
-		(*sc)[UP] = aim != TRACK_LEN ? 10 : 7;
-		(*sc)[DOWN] = aim != TRACK_LEN ? 10 : 7;
-		(*sc)[LEFT] = aim != TRACK_LEN ? 5 : 3;
-		(*sc)[RIGHT] = aim != TRACK_LEN ? 0 : 10;
+	case 3: // two spaces to hurdle or one space to finish line
+		(*sc)[UP] = 10;
+		(*sc)[DOWN] = 10;
+		(*sc)[LEFT] = 5;
+		(*sc)[RIGHT] = aim != TRACK_LEN ? -2 : 10;
 		return;
-	default: // three+ spaces to hurdle or final line
+	default: // three+ spaces to hurdle or finish line
 		(*sc)[UP] = 7;
 		(*sc)[DOWN] = 7;
 		(*sc)[LEFT] = 3;
