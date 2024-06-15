@@ -175,7 +175,9 @@ void hurdles(register_t *reg, array_scores *sc)
 
 short root2(short S, short x0)
 {
-	for (int i = 0; i < 5; i++) {
+	if (!S) return 0;
+
+	for (int i = 0; i < 3; i++) {
 		short x1 = (x0 + S / x0) >> 1; // Heron's method
 		x0 = x1;
 	}
