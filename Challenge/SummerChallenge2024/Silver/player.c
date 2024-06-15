@@ -68,7 +68,10 @@ void diving(register_t *, array_scores *);
 
 typedef void (*func_mgame)(register_t *, array_scores *);
 
+int may_complete(register_t *, enum games);
+
 #define GAMEOVER "GAME_OVER"
+#define GAME_DURATION 100
 
 int player_idx, loop;
 
@@ -78,7 +81,7 @@ int main()
 	scanf("%d%d", &player_idx, &nb_games);
 
 	// game loop
-	while (1) {
+	for (loop = 0; ; loop++) {
 		char score_info[3][65];
 		for (int i = 0; i < 3; i++)
 			scanf("\n%[^\n]\n", score_info[i]);
@@ -89,7 +92,7 @@ int main()
 				scanf("%d", reg->reg + i);
 		};
 
-		fprintf(stderr, "** Turn #%03d **\n", loop++);
+		fprintf(stderr, "** Turn #%03d **\n", loop);
 
 		func_mgame mgames[] = { hurdles, archery, skating, diving };
 		array_scores indiv[NUMBER_MGAMES]; // 4 mini-game scores
@@ -128,7 +131,7 @@ int main()
 void hurdles(register_t *reg, array_scores *sc)
 {
 	// reset turn or stunned runner
-	if (!strcmp(reg->gpu, GAMEOVER) || reg->reg[player_idx + 3]) {
+	if (!strcmp(reg->gpu, GAMEOVER) || reg->reg[player_idx + 3] || !may_complete(reg, HURDLE_RACE)) {
 		(*sc)[UP] = 0;    // +2 and jump
 		(*sc)[DOWN] = 0;  // +2
 		(*sc)[LEFT] = 0;  // +1
@@ -136,8 +139,8 @@ void hurdles(register_t *reg, array_scores *sc)
 		return;
 	}
 
-	short pos = reg->reg[player_idx]; // current position
-	short aim;                        // position runner aims at
+	const short pos = reg->reg[player_idx]; // current position
+	short aim;                              // position runner aims at
 	for (aim = pos + 1; aim < TRACK_LEN && reg->gpu[aim] == '.'; aim++)
 		;
 	switch (aim - pos) { // finish line = TRACK_LEN - 1
@@ -173,7 +176,7 @@ void hurdles(register_t *reg, array_scores *sc)
 #define ABS(a) ((a) < 0 ? (-a) : (a))
 #define SIGN(a) ((a) < 0 ? -1 : (a) > 0 ? 1 : 0)
 
-short root2(short S, short x0)
+short root2(const short S, short x0)
 {
 	short x1;
 	for (int i = 0; x0 && i < 3; i++, x0 = x1)
@@ -185,7 +188,7 @@ short root2(short S, short x0)
 // Archery mini-game
 void archery(register_t *reg, array_scores *sc)
 {
-	if (!strcmp(reg->gpu, GAMEOVER)) {
+	if (!strcmp(reg->gpu, GAMEOVER) || !may_complete(reg, ARCHERY)) {
 		(*sc)[UP] = 0;
 		(*sc)[DOWN] = 0;
 		(*sc)[LEFT] = 0;
@@ -193,7 +196,7 @@ void archery(register_t *reg, array_scores *sc)
 		return;
 	}
 
-	short wind = reg->gpu[0] - '0';
+	const short wind = reg->gpu[0] - '0';
 	// ( x0, y0 ): current cursor position
 	// ( x1, y1 ): next cursor position, for each direction
 	short x0 = reg->reg[player_idx << 1], x1[NUMBER_MGAMES];
@@ -215,7 +218,7 @@ void archery(register_t *reg, array_scores *sc)
 void skating(register_t *reg, array_scores *sc)
 {
 	// reset turn or stunned skater
-	if (!strcmp(reg->gpu, GAMEOVER) || reg->reg[player_idx + 3] < 0) {
+	if (!strcmp(reg->gpu, GAMEOVER) || reg->reg[player_idx + 3] < 0 || !may_complete(reg, ROLLER_SPEED_SKATING)) {
 		(*sc)[UP] = 0;
 		(*sc)[DOWN] = 0;
 		(*sc)[LEFT] = 0;
@@ -223,13 +226,13 @@ void skating(register_t *reg, array_scores *sc)
 		return;
 	}
 
-	short travelled[3] = {
+	const short travelled[3] = {
 		reg->reg[player_idx],           // me
 		reg->reg[(player_idx + 1) % 3], // opponent 1
 		reg->reg[(player_idx + 2) % 3]  // opponent 2
 	};
-	short advantage = SIGN(travelled[0] - MAX(travelled[1], travelled[2]));
-	short risk = reg->reg[player_idx + 3];
+	const short advantage = SIGN(travelled[0] - MAX(travelled[1], travelled[2]));
+	const short risk = reg->reg[player_idx + 3];
 	short risk_order; // stores the index in gpu of each operator
 	for (enum ops op = 0; op < NUMBER_OPS; op++) {
 		risk_order = strchr(reg->gpu, initials[op]) - reg->gpu;
@@ -253,7 +256,7 @@ void skating(register_t *reg, array_scores *sc)
 // Diving
 void diving(register_t *reg, array_scores *sc)
 {
-	if (!strcmp(reg->gpu, GAMEOVER)) {
+	if (!strcmp(reg->gpu, GAMEOVER) || !may_complete(reg, DIVING)) {
 		(*sc)[UP] = 0;
 		(*sc)[DOWN] = 0;
 		(*sc)[LEFT] = 0;
@@ -261,7 +264,22 @@ void diving(register_t *reg, array_scores *sc)
 		return;
 	}
 
-	char correct = *reg->gpu;
+	const char correct = *reg->gpu;
 	for (enum ops op = 0; op < NUMBER_OPS; op++)
 		(*sc)[op] = initials[op] == correct ? (6 + reg->reg[player_idx + 3]) : 0;
+}
+
+// Checks if there is actually enough time to complete the running mini-game
+int may_complete(register_t *reg, enum games mg)
+{
+	const short remaining = GAME_DURATION - loop;
+
+	switch (mg) {
+	case HURDLE_RACE:
+	case ARCHERY:
+	case ROLLER_SPEED_SKATING:
+	case DIVING: default:
+		;
+	}
+	return 1;
 }
