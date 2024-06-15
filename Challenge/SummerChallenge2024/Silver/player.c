@@ -97,7 +97,7 @@ int main()
 		enum ops op;
 		for (mg = 0; mg < nb_games; mg++) {
 			mgames[mg](registers + mg, indiv + mg);
-			fprintf(stderr, "Mini-game: %s\n", played[mg]); 
+			fprintf(stderr, "Mini-game: %s\n", played[mg]);
 			for (op = 0; op < NUMBER_OPS; op++)
 				fprintf(stderr, "  %s : %+03hd\n", output[op], indiv[mg][op]);
 		}
@@ -105,7 +105,7 @@ int main()
 		for (sc = indiv; sc - indiv < nb_games; sc++)
 			for (op = 0; op < NUMBER_OPS; op++)
 				tally[op] += (*sc)[op];
-		fprintf(stderr, "TOTAL SCORE:\n"); 
+		fprintf(stderr, "TOTAL SCORE:\n");
 		for (op = 0; op < NUMBER_OPS; op++)
 			fprintf(stderr, "  %s : %+03hd\n", output[op], tally[op]);
 		enum ops max_op;
@@ -175,11 +175,9 @@ void hurdles(register_t *reg, array_scores *sc)
 
 short root2(short S, short x0)
 {
-	for (int i = 0; i < 3; i++) {
-		if (!x0) return 0;
-		short x1 = (x0 + S / x0) >> 1; // Heron's method
-		x0 = x1;
-	}
+	short x1;
+	for (int i = 0; x0 && i < 3; i++, x0 = x1)
+		x1 = (x0 + S / x0) >> 1; // Heron's method
 
 	return x0;
 }
