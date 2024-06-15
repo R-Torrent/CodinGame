@@ -29,7 +29,7 @@ enum ops {
 };
 #undef X
 
-#define X(a, b) 'b',
+#define X(a, b) (#b)[0],
 char initials[] = {
 	TURN
 };
@@ -178,8 +178,6 @@ void skating(register_t *reg, array_scores *sc)
 {
 }
 
-int action;
-
 // Diving
 void diving(register_t *reg, array_scores *sc)
 {
@@ -188,11 +186,10 @@ void diving(register_t *reg, array_scores *sc)
 		(*sc)[DOWN] = 0;
 		(*sc)[LEFT] = 0;
 		(*sc)[RIGHT] = 0;
-		action = 0;
 		return;
 	}
 
-	char correct = reg->gpu[action++];
+	char correct = *reg->gpu;
 	for (enum ops op = 0; op < NUMBER_OPS; op++)
-		(*sc)[op] = initials[op] == correct ? (2 * reg->reg[player_idx + 3]) : 0;
+		(*sc)[op] = initials[op] == correct ? (5 + reg->reg[player_idx + 3]) : 0;
 }
