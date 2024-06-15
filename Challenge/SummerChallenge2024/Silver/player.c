@@ -175,9 +175,8 @@ void hurdles(register_t *reg, array_scores *sc)
 
 short root2(short S, short x0)
 {
-	if (!S) return 0;
-
 	for (int i = 0; i < 3; i++) {
+		if (!x0) return 0;
 		short x1 = (x0 + S / x0) >> 1; // Heron's method
 		x0 = x1;
 	}
@@ -209,8 +208,8 @@ void archery(register_t *reg, array_scores *sc)
 	short euclid;
 	for (enum ops op = 0; op < NUMBER_OPS; op++) {
 		euclid = root2(x1[op] * x1[op] + y1[op] * y1[op], (ABS(x1[op]) + ABS(y1[op])));
-		// lineal response; max = 12, indifference at 15 away
-		(*sc)[op] = 12 - (12 * euclid / 15);
+		// lineal response; max = 10, indifference at 15 away
+		(*sc)[op] = 10 - (10 * euclid / 15);
 	}
 }
 
@@ -266,5 +265,5 @@ void diving(register_t *reg, array_scores *sc)
 
 	char correct = *reg->gpu;
 	for (enum ops op = 0; op < NUMBER_OPS; op++)
-		(*sc)[op] = initials[op] == correct ? (5 + reg->reg[player_idx + 3]) : 0;
+		(*sc)[op] = initials[op] == correct ? (6 + reg->reg[player_idx + 3]) : 0;
 }
