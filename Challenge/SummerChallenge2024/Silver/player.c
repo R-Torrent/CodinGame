@@ -99,7 +99,7 @@ int main()
 			mgames[mg](registers + mg, indiv + mg);
 			fprintf(stderr, "Mini-game: %s\n", played[mg]); 
 			for (op = 0; op < NUMBER_OPS; op++)
-				fprintf(stderr, "  %s : %02d\n", output[op], indiv[mg][op]);
+				fprintf(stderr, "  %s : %+03d\n", output[op], indiv[mg][op]);
 		}
 		array_scores *sc, tally = { 0 }; // combined scores
 		for (sc = indiv; sc - indiv < nb_games; sc++)
@@ -107,7 +107,7 @@ int main()
 				tally[op] += (*sc)[op];
 		fprintf(stderr, "TOTAL SCORE:\n"); 
 		for (op = 0; op < NUMBER_OPS; op++)
-			fprintf(stderr, "  %s : %02d\n", output[op], tally[op]);
+			fprintf(stderr, "  %s : %+03d\n", output[op], tally[op]);
 		enum ops max_op;
 		short max_score = 0;
 		for (op = 0; op < NUMBER_OPS; op++)
@@ -168,9 +168,47 @@ void hurdles(register_t *reg, array_scores *sc)
 	}
 }
 
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define ABS(a) ((a) < 0 ? (-a) : (a))
+
+short root2(short S, short x0)
+{
+	for (int i = 0; i < 5; i++) {
+		short x1 = (x0 + S / x0) >> 1; // Heron's method
+		x0 = x1;
+	}
+
+	return x0;
+}
+
 // Archery mini-game
 void archery(register_t *reg, array_scores *sc)
 {
+	if (!strcmp(reg->gpu, GAMEOVER)) {
+		(*sc)[UP] = 0;
+		(*sc)[DOWN] = 0;
+		(*sc)[LEFT] = 0;
+		(*sc)[RIGHT] = 0;
+		return;
+	}
+
+	short wind = reg->gpu[0] - '0';
+	// ( x0, y0 ): current cursor position
+	// ( x1, y1 ): next cursor position, for each direction
+	short x0 = reg->reg[player_idx << 1], x1[NUMBER_MGAMES];
+	short y0 = reg->reg[(player_idx << 1) + 1], y1[NUMBER_MGAMES];
+	x1[UP] = x0, y1[UP] = MAX(y0 - wind, -20);
+	x1[DOWN] = x0; y1[DOWN] = MIN(y0 + wind, 20);
+	x1[LEFT] = MAX(x0 - wind, -20), y1[LEFT] = y0;
+	x1[RIGHT] = MIN(x0 + wind, 20), y1[RIGHT] = y0;
+	// euclid: measure of distance to bullseye
+	short euclid;
+	for (enum ops op = 0; op < NUMBER_OPS; op++) {
+		euclid = root2(x1[op] * x1[op] + y1[op] * y1[op], (ABS(x1[op]) + ABS(y1[op])));
+		// lineal response; max = 12, indifference at 15 away
+		(*sc)[op] = 12 - (12 * euclid / 15);
+	}
 }
 
 // Roller Speed Skating
