@@ -270,7 +270,7 @@ void diving(register_t *reg, array_scores *sc)
 
 	const char correct = *reg->gpu;
 	for (enum ops op = 0; op < NUMBER_OPS; op++)
-		(*sc)[op] = initials[op] == correct ? (6 + reg->reg[player_idx + 3]) : 0;
+		(*sc)[op] = initials[op] == correct ? (8 + reg->reg[player_idx + 3]) : 0;
 }
 
 // Checks if there is actually enough time to complete the running mini-game
