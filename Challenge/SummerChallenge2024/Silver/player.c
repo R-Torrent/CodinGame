@@ -197,6 +197,7 @@ void archery(register_t *reg, array_scores *sc)
 	}
 
 	const short wind = reg->gpu[0] - '0';
+	const short remaining = strlen(reg->gpu);
 	// ( x0, y0 ): current cursor position
 	// ( x1, y1 ): next cursor position, for each direction
 	short x0 = reg->reg[player_idx << 1], x1[NUMBER_MGAMES];
@@ -211,6 +212,9 @@ void archery(register_t *reg, array_scores *sc)
 		euclid = root2(x1[op] * x1[op] + y1[op] * y1[op], (ABS(x1[op]) + ABS(y1[op])));
 		// lineal response; max = 10, indifference at 15 away
 		(*sc)[op] = 10 - (10 * euclid / 15);
+		// only the last six turns really matter
+		(*sc)[op] *= remaining < 7 ? 4 : remaining < 11 ? 3 : 1;
+                (*sc)[op] /= 3;
 	}
 }
 
