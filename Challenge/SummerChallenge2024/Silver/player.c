@@ -111,7 +111,7 @@ int main()
 		fprintf(stderr, "TOTAL SCORE:\n");
 		for (op = 0; op < NUMBER_OPS; op++)
 			fprintf(stderr, "  %s : %+03hd\n", output[op], tally[op]);
-		enum ops max_op;
+		enum ops max_op = 0;
 		short max_score = 0;
 		for (op = 0; op < NUMBER_OPS; op++)
 			if (tally[op] > max_score) {
@@ -270,20 +270,26 @@ void diving(register_t *reg, array_scores *sc)
 
 	const char correct = *reg->gpu;
 	for (enum ops op = 0; op < NUMBER_OPS; op++)
-		(*sc)[op] = initials[op] == correct ? (8 + reg->reg[player_idx + 3]) : 0;
+		(*sc)[op] = initials[op] == correct ? (7 + reg->reg[player_idx + 3]) : 0;
 }
 
 // Checks if there is actually enough time to complete the running mini-game
 int may_complete(register_t *reg, enum games mg)
 {
 	const short remaining = GAME_DURATION - loop;
+	short turns = 0;
 
 	switch (mg) {
 	case HURDLE_RACE:
-	case ARCHERY:
-	case ROLLER_SPEED_SKATING:
-	case DIVING: default:
-		;
+		for (short pos = reg->reg[player_idx], aim; pos < TRACK_LEN - 1; turns++) {
+			for (aim = pos + 1; aim < TRACK_LEN && reg->gpu[aim] == '.'; aim++)
+				;
+			short diff = aim - pos - 1;
+			pos += diff ? MIN(3, diff) : 2;
+		}
+		return turns <= remaining;
+	case ARCHERY: return strlen(reg->gpu) <= remaining;
+	case ROLLER_SPEED_SKATING: return reg->reg[6] <= remaining;
+	case DIVING: default: return strlen(reg->gpu) <= remaining;
 	}
-	return 1;
 }
