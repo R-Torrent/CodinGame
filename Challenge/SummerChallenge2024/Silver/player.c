@@ -280,7 +280,7 @@ void diving(register_t *reg, array_scores *sc)
 int playable_game(register_t *reg, enum games mg)
 {
 	const short remaining = GAME_DURATION - loop;
-	const short current[3] = {
+	short current[3] = {
 		reg->reg[player_idx],           // me
 		reg->reg[(player_idx + 1) % 3], // opponent 1
 		reg->reg[(player_idx + 2) % 3]  // opponent 2
@@ -289,11 +289,12 @@ int playable_game(register_t *reg, enum games mg)
 
 	switch (mg) {
 	case HURDLE_RACE:
-		for (short pos = reg->reg[player_idx], turns = 0, aim; pos < TRACK_LEN - 1; turns++) {
-			for (aim = pos + 1; aim < TRACK_LEN && reg->gpu[aim] == '.'; aim++)
+		for (turns = 0; *current < TRACK_LEN - 1; turns++) {
+			short aim;
+			for (aim = *current + 1; aim < TRACK_LEN && reg->gpu[aim] == '.'; aim++)
 				;
-			short diff = aim - pos - 1;
-			pos += diff ? MIN(3, diff) : 2;
+			short diff = aim - *current - 1;
+			*current += diff ? MIN(3, diff) : 2;
 		}
 
 		return turns <= remaining;
