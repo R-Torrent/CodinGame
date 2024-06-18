@@ -185,6 +185,30 @@ short root2(const short S, short x0)
 	return x0;
 }
 
+void best_archery_solutions(short *dst, const short x0, const short y0, char *winds, short shots)
+{
+	// ( x1, y1 ): next cursor position, for each direction
+	short x1[NUMBER_OPS], y1[NUMBER_OPS];
+	const short wind =  *winds - '0';
+
+	x1[UP] = x0, y1[UP] = MAX(y0 - wind, -20);
+	x1[DOWN] = x0; y1[DOWN] = MIN(y0 + wind, 20);
+	x1[LEFT] = MAX(x0 - wind, -20), y1[LEFT] = y0;
+	x1[RIGHT] = MIN(x0 + wind, 20), y1[RIGHT] = y0;
+	if (--shots)
+		for (enum ops op = 0; op < NUMBER_OPS; op++) {
+			short dst2[NUMBER_OPS];
+			best_archery_solutions(dst2, x1[op], y1[op], winds + 1, shots);
+			dst[op] = MIN(dst2[UP], MIN(dst2[DOWN], MIN(dst2[LEFT], dst2[RIGHT])));
+		}
+	else
+		for (enum ops op = 0; op < NUMBER_OPS; op++)
+			 dst[op] = root2(x1[op] * x1[op] + y1[op] * y1[op],
+					 (ABS(x1[op]) + ABS(y1[op])));
+}
+
+#define SHOTS_TO_CONSIDER 5 // NOTE: # of cases to consider grows as 4^(SHOTS_TO_CONSIDER)
+
 // Archery mini-game
 void archery(register_t *reg, array_scores *sc)
 {
@@ -196,22 +220,16 @@ void archery(register_t *reg, array_scores *sc)
 		return;
 	}
 
-	const short wind = reg->gpu[0] - '0';
 	const short remaining = strlen(reg->gpu);
 	// ( x0, y0 ): current cursor position
-	// ( x1, y1 ): next cursor position, for each direction
-	short x0 = reg->reg[player_idx << 1], x1[NUMBER_MGAMES];
-	short y0 = reg->reg[(player_idx << 1) + 1], y1[NUMBER_MGAMES];
-	x1[UP] = x0, y1[UP] = MAX(y0 - wind, -20);
-	x1[DOWN] = x0; y1[DOWN] = MIN(y0 + wind, 20);
-	x1[LEFT] = MAX(x0 - wind, -20), y1[LEFT] = y0;
-	x1[RIGHT] = MIN(x0 + wind, 20), y1[RIGHT] = y0;
-	// euclid: measure of distance to bullseye
-	short euclid;
+	const short x0 = reg->reg[player_idx << 1];
+	const short y0 = reg->reg[(player_idx << 1) + 1];
+	// Euclidean: measure of distance to bullseye
+	short Euclidean[NUMBER_OPS];
+	best_archery_solutions(Euclidean, x0, y0, reg->gpu, MIN(SHOTS_TO_CONSIDER, remaining));
 	for (enum ops op = 0; op < NUMBER_OPS; op++) {
-		euclid = root2(x1[op] * x1[op] + y1[op] * y1[op], (ABS(x1[op]) + ABS(y1[op])));
 		// lineal response; max = 10, indifference at 15 away
-		(*sc)[op] = 10 - (10 * euclid / 15);
+		(*sc)[op] = 10 - (10 * Euclidean[op] / 15);
 		// only the last six turns really matter
 		(*sc)[op] *= remaining < 7 ? 4 : remaining < 11 ? 3 : 1;
                 (*sc)[op] /= 3;
@@ -222,7 +240,8 @@ void archery(register_t *reg, array_scores *sc)
 void skating(register_t *reg, array_scores *sc)
 {
 	// reset turn or stunned skater
-	if (!strcmp(reg->gpu, GAMEOVER) || reg->reg[player_idx + 3] < 0 || !playable_game(reg, ROLLER_SPEED_SKATING)) {
+	if (!strcmp(reg->gpu, GAMEOVER) || reg->reg[player_idx + 3] < 0
+			|| !playable_game(reg, ROLLER_SPEED_SKATING)) {
 		(*sc)[UP] = 0;
 		(*sc)[DOWN] = 0;
 		(*sc)[LEFT] = 0;
