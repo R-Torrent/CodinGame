@@ -270,7 +270,7 @@ void diving(register_t *reg, array_scores *sc)
 
 	const char correct = *reg->gpu;
 	for (enum ops op = 0; op < NUMBER_OPS; op++)
-		(*sc)[op] = initials[op] == correct ? MIN((7 + reg->reg[player_idx + 3]), 14) : 0;
+		(*sc)[op] = initials[op] == correct ? MIN((7 + reg->reg[player_idx + 3]), 12) : 0;
 }
 
 // Arithmetic series SERIES(a, b) = a + (a+1) + (a+2) + ... + (b-1) + b
@@ -280,7 +280,12 @@ void diving(register_t *reg, array_scores *sc)
 int playable_game(register_t *reg, enum games mg)
 {
 	const short remaining = GAME_DURATION - loop;
-	short turns;
+	const short current[3] = {
+		reg->reg[player_idx],           // me
+		reg->reg[(player_idx + 1) % 3], // opponent 1
+		reg->reg[(player_idx + 2) % 3]  // opponent 2
+	};
+	short turns, potential[3], lazy_potential_pos, max_potential_pos;
 
 	switch (mg) {
 	case HURDLE_RACE:
@@ -293,15 +298,19 @@ int playable_game(register_t *reg, enum games mg)
 
 		return turns <= remaining;
 	case ARCHERY: return strlen(reg->gpu) <= remaining;
-	case ROLLER_SPEED_SKATING: return reg->reg[6] <= remaining;
+	case ROLLER_SPEED_SKATING:
+		turns = reg->reg[6];
+		for (int i = 0; i < 3; i++)
+			potential[i] = current[i] + 3 * turns;
+		// without advancing a single space, opponents moving by 3 every time
+		lazy_potential_pos = 1 + (potential[1] >= current[0]) + (potential[2] >= current[0]);
+		// potentially sprinting by 3 spaces, opponents none
+		max_potential_pos = 1 + (current[1] >= potential[0]) + (current[2] >= potential[0]);
+		// (to bolster competitiveness, ties are considered a lost place)
+
+		return turns <= remaining && lazy_potential_pos != 1 && max_potential_pos != 3;
 	case DIVING: default:
 		turns = strlen(reg->gpu);
-		const short current[3] = {
-			reg->reg[player_idx],           // me
-			reg->reg[(player_idx + 1) % 3], // opponent 1
-			reg->reg[(player_idx + 2) % 3]  // opponent 2
-		};
-		short potential[3], lazy_potential_pos, max_potential_pos;
 		for (int i = 0; i < 3; i++) {
 			short combo = reg->reg[(player_idx + i) % 3 + 3] + 1;
 			potential[i] = current[i] + SERIES(combo, combo + turns - 1);
@@ -311,7 +320,7 @@ int playable_game(register_t *reg, enum games mg)
 		// potentially earning all the possible points, opponents none
 		max_potential_pos = 1 + (current[1] >= potential[0]) + (current[2] >= potential[0]);
 		// (to bolster competitiveness, ties are considered a lost place)
-		
+
 		return turns <= remaining && lazy_potential_pos != 1 && max_potential_pos != 3;
 	}
 }
