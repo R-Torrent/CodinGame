@@ -68,7 +68,7 @@ void diving(register_t *, array_scores *);
 
 typedef void (*func_mgame)(register_t *, array_scores *);
 
-int may_complete(register_t *, enum games);
+int playable_game(register_t *, enum games);
 
 #define GAMEOVER "GAME_OVER"
 #define GAME_DURATION 100
@@ -131,7 +131,7 @@ int main()
 void hurdles(register_t *reg, array_scores *sc)
 {
 	// reset turn or stunned runner
-	if (!strcmp(reg->gpu, GAMEOVER) || reg->reg[player_idx + 3] || !may_complete(reg, HURDLE_RACE)) {
+	if (!strcmp(reg->gpu, GAMEOVER) || reg->reg[player_idx + 3] || !playable_game(reg, HURDLE_RACE)) {
 		(*sc)[UP] = 0;    // +2 and jump
 		(*sc)[DOWN] = 0;  // +2
 		(*sc)[LEFT] = 0;  // +1
@@ -188,7 +188,7 @@ short root2(const short S, short x0)
 // Archery mini-game
 void archery(register_t *reg, array_scores *sc)
 {
-	if (!strcmp(reg->gpu, GAMEOVER) || !may_complete(reg, ARCHERY)) {
+	if (!strcmp(reg->gpu, GAMEOVER) || !playable_game(reg, ARCHERY)) {
 		(*sc)[UP] = 0;
 		(*sc)[DOWN] = 0;
 		(*sc)[LEFT] = 0;
@@ -222,7 +222,7 @@ void archery(register_t *reg, array_scores *sc)
 void skating(register_t *reg, array_scores *sc)
 {
 	// reset turn or stunned skater
-	if (!strcmp(reg->gpu, GAMEOVER) || reg->reg[player_idx + 3] < 0 || !may_complete(reg, ROLLER_SPEED_SKATING)) {
+	if (!strcmp(reg->gpu, GAMEOVER) || reg->reg[player_idx + 3] < 0 || !playable_game(reg, ROLLER_SPEED_SKATING)) {
 		(*sc)[UP] = 0;
 		(*sc)[DOWN] = 0;
 		(*sc)[LEFT] = 0;
@@ -260,7 +260,7 @@ void skating(register_t *reg, array_scores *sc)
 // Diving
 void diving(register_t *reg, array_scores *sc)
 {
-	if (!strcmp(reg->gpu, GAMEOVER) || !may_complete(reg, DIVING)) {
+	if (!strcmp(reg->gpu, GAMEOVER) || !playable_game(reg, DIVING)) {
 		(*sc)[UP] = 0;
 		(*sc)[DOWN] = 0;
 		(*sc)[LEFT] = 0;
@@ -270,26 +270,48 @@ void diving(register_t *reg, array_scores *sc)
 
 	const char correct = *reg->gpu;
 	for (enum ops op = 0; op < NUMBER_OPS; op++)
-		(*sc)[op] = initials[op] == correct ? (7 + reg->reg[player_idx + 3]) : 0;
+		(*sc)[op] = initials[op] == correct ? MIN((7 + reg->reg[player_idx + 3]), 14) : 0;
 }
 
+// Arithmetic series SERIES(a, b) = a + (a+1) + (a+2) + ... + (b-1) + b
+#define SERIES(a, b) ((((a) + (b)) * ((b) - (a) + 1)) >> 1)
+
 // Checks if there is actually enough time to complete the running mini-game
-int may_complete(register_t *reg, enum games mg)
+int playable_game(register_t *reg, enum games mg)
 {
 	const short remaining = GAME_DURATION - loop;
-	short turns = 0;
+	short turns;
 
 	switch (mg) {
 	case HURDLE_RACE:
-		for (short pos = reg->reg[player_idx], aim; pos < TRACK_LEN - 1; turns++) {
+		for (short pos = reg->reg[player_idx], turns = 0, aim; pos < TRACK_LEN - 1; turns++) {
 			for (aim = pos + 1; aim < TRACK_LEN && reg->gpu[aim] == '.'; aim++)
 				;
 			short diff = aim - pos - 1;
 			pos += diff ? MIN(3, diff) : 2;
 		}
+
 		return turns <= remaining;
 	case ARCHERY: return strlen(reg->gpu) <= remaining;
 	case ROLLER_SPEED_SKATING: return reg->reg[6] <= remaining;
-	case DIVING: default: return strlen(reg->gpu) <= remaining;
+	case DIVING: default:
+		turns = strlen(reg->gpu);
+		const short current[3] = {
+			reg->reg[player_idx],           // me
+			reg->reg[(player_idx + 1) % 3], // opponent 1
+			reg->reg[(player_idx + 2) % 3]  // opponent 2
+		};
+		short potential[3], lazy_potential_pos, max_potential_pos;
+		for (int i = 0; i < 3; i++) {
+			short combo = reg->reg[(player_idx + i) % 3 + 3] + 1;
+			potential[i] = current[i] + SERIES(combo, combo + turns - 1);
+		}
+		// without scoring a single extra point, opponents scoring every time
+		lazy_potential_pos = 1 + (potential[1] >= current[0]) + (potential[2] >= current[0]);
+		// potentially earning all the possible points, opponents none
+		max_potential_pos = 1 + (current[1] >= potential[0]) + (current[2] >= potential[0]);
+		// (to bolster competitiveness, ties are considered a lost place)
+		
+		return turns <= remaining && lazy_potential_pos != 1 && max_potential_pos != 3;
 	}
 }
