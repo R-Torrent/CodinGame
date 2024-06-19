@@ -216,7 +216,7 @@ void best_archery_solutions(short *dst, const short x0, const short y0, char *wi
 					 (ABS(x1[op]) + ABS(y1[op])));
 }
 
-#define SHOTS_TO_CONSIDER 5 // NOTE: # of cases to consider grows as 4^(SHOTS_TO_CONSIDER)
+#define SHOTS_TO_CONSIDER 3 // NOTE: # of cases to consider grows as 4^(SHOTS_TO_CONSIDER)
 
 // Archery mini-game
 void archery(register_t *reg, array_scores *sc)
