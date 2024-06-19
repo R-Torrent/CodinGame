@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /*
@@ -83,8 +84,17 @@ int main()
 	// game loop
 	for (loop = 0; ; loop++) {
 		char score_info[3][65];
+		int own_score, detailed_score[NUMBER_MGAMES];
+		int own_medals[NUMBER_MGAMES][3]; // own medals
 		for (int i = 0; i < 3; i++)
 			scanf("\n%[^\n]\n", score_info[i]);
+		own_score = atoi(strtok(score_info[player_idx], " "));
+		for (int i = 0, *pm = own_medals[0]; i < NUMBER_MGAMES * 3; i++)
+			*pm++ = atoi(strtok(NULL, " "));
+		enum games mg;
+		for (mg = 0; mg < nb_games; mg++)
+			detailed_score[mg] = 3 * own_medals[mg][0] + own_medals[mg][1];
+
 		register_t *reg, registers[NUMBER_MGAMES];
 		for (reg = registers; reg - registers < nb_games; reg++) {
 			scanf("%s", reg->gpu);
@@ -96,7 +106,6 @@ int main()
 
 		func_mgame mgames[] = { hurdles, archery, skating, diving };
 		array_scores indiv[NUMBER_MGAMES]; // 4 mini-game scores
-		enum games mg;
 		enum ops op;
 		for (mg = 0; mg < nb_games; mg++) {
 			mgames[mg](registers + mg, indiv + mg);
