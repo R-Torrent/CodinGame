@@ -58,18 +58,18 @@ enum games {
 typedef struct {
 	char gpu[65];
 	int reg[7];
-} register_t;
+} registers_t;
 
 typedef short array_scores[NUMBER_OPS];
 
-void hurdles(register_t *, array_scores *);
-void archery(register_t *, array_scores *);
-void skating(register_t *, array_scores *);
-void diving(register_t *, array_scores *);
+void hurdles(registers_t *, array_scores *);
+void archery(registers_t *, array_scores *);
+void skating(registers_t *, array_scores *);
+void diving(registers_t *, array_scores *);
 
-typedef void (*func_mgame)(register_t *, array_scores *);
+typedef void (*func_mgame)(registers_t *, array_scores *);
 
-int playable_game(register_t *, enum games);
+int playable_game(registers_t *, enum games);
 
 #define GAMEOVER "GAME_OVER"
 #define GAME_DURATION 100
@@ -95,7 +95,7 @@ int main()
 		for (mg = 0; mg < nb_games; mg++)
 			detailed_score[mg] = 3 * own_medals[mg][0] + own_medals[mg][1];
 
-		register_t *reg, registers[NUMBER_MGAMES];
+		registers_t *reg, registers[NUMBER_MGAMES];
 		for (reg = registers; reg - registers < nb_games; reg++) {
 			scanf("%s", reg->gpu);
 			for (int i = 0; i < 7; i++)
@@ -137,7 +137,7 @@ int main()
 #define TRACK_LEN 30
 
 // Hurdle Race mini-game
-void hurdles(register_t *reg, array_scores *sc)
+void hurdles(registers_t *reg, array_scores *sc)
 {
 	// reset turn or stunned runner
 	if (!strcmp(reg->gpu, GAMEOVER) || reg->reg[player_idx + 3] || !playable_game(reg, HURDLE_RACE)) {
@@ -219,7 +219,7 @@ void best_archery_solutions(short *dst, const short x0, const short y0, char *wi
 #define SHOTS_TO_CONSIDER 3 // NOTE: # of cases to consider grows as 4^(SHOTS_TO_CONSIDER)
 
 // Archery mini-game
-void archery(register_t *reg, array_scores *sc)
+void archery(registers_t *reg, array_scores *sc)
 {
 	if (!strcmp(reg->gpu, GAMEOVER) || !playable_game(reg, ARCHERY)) {
 		(*sc)[UP] = 0;
@@ -246,7 +246,7 @@ void archery(register_t *reg, array_scores *sc)
 }
 
 // Roller Speed Skating
-void skating(register_t *reg, array_scores *sc)
+void skating(registers_t *reg, array_scores *sc)
 {
 	// reset turn or stunned skater
 	if (!strcmp(reg->gpu, GAMEOVER) || reg->reg[player_idx + 3] < 0
@@ -286,7 +286,7 @@ void skating(register_t *reg, array_scores *sc)
 }
 
 // Diving
-void diving(register_t *reg, array_scores *sc)
+void diving(registers_t *reg, array_scores *sc)
 {
 	if (!strcmp(reg->gpu, GAMEOVER) || !playable_game(reg, DIVING)) {
 		(*sc)[UP] = 0;
@@ -305,7 +305,7 @@ void diving(register_t *reg, array_scores *sc)
 #define SERIES(a, b) ((((a) + (b)) * ((b) - (a) + 1)) >> 1)
 
 // Checks if there is actually enough time to complete the running mini-game
-int playable_game(register_t *reg, enum games mg)
+int playable_game(registers_t *reg, enum games mg)
 {
 	const short remaining = GAME_DURATION - loop;
 	short current[3] = {
