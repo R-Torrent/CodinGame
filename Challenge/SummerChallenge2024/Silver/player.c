@@ -235,12 +235,13 @@ void archery(registers_t *reg, array_scores *sc)
 	const short y0 = reg->reg[(player_idx << 1) + 1];
 	// Euclidean: measure of distance to bullseye
 	short Euclidean[NUMBER_OPS];
-	best_archery_solutions(Euclidean, x0, y0, reg->gpu, MIN(SHOTS_TO_CONSIDER, remaining));
+	best_archery_solutions(Euclidean, x0, y0, reg->gpu,
+			remaining <= SHOTS_TO_CONSIDER ? remaining : 1);
 	for (enum ops op = 0; op < NUMBER_OPS; op++) {
-		// lineal response; max = 10, indifference at 15 away
-		(*sc)[op] = 10 - (10 * Euclidean[op] / 15);
-		// only the last six turns really matter
-		(*sc)[op] *= remaining < 7 ? 4 : remaining < 11 ? 3 : 1;
+		// lineal response; max = 10, indifference at 10 away (slope -1)
+		(*sc)[op] = 10 - Euclidean[op];
+		// only the last four turns really matter
+		(*sc)[op] *= remaining < 5 ? 4 : remaining < 9 ? 3 : 1;
                 (*sc)[op] /= 3;
 	}
 }
