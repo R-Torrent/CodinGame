@@ -1,3 +1,4 @@
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -60,7 +61,7 @@ typedef struct {
 	int reg[7];
 } registers_t;
 
-typedef short array_scores[NUMBER_OPS];
+typedef float array_scores[NUMBER_OPS];
 
 void hurdles(registers_t *, array_scores *);
 void archery(registers_t *, array_scores *);
@@ -111,17 +112,17 @@ int main()
 			mgames[mg](registers + mg, indiv + mg);
 			fprintf(stderr, "Mini-game: %s\n", played[mg]);
 			for (op = 0; op < NUMBER_OPS; op++)
-				fprintf(stderr, "  %s : %+03hd\n", output[op], indiv[mg][op]);
+				fprintf(stderr, "  %s : %+06.2f\n", output[op], indiv[mg][op]);
 		}
-		array_scores *sc, tally = { 0 }; // combined scores
+		array_scores *sc, tally = { 0.0F }; // combined scores
 		for (sc = indiv; sc - indiv < nb_games; sc++)
 			for (op = 0; op < NUMBER_OPS; op++)
 				tally[op] += (*sc)[op];
 		fprintf(stderr, "TOTAL SCORE:\n");
 		for (op = 0; op < NUMBER_OPS; op++)
-			fprintf(stderr, "  %s : %+03hd\n", output[op], tally[op]);
+			fprintf(stderr, "  %s : %+06.2f\n", output[op], tally[op]);
 		enum ops max_op = 0;
-		short max_score = 0;
+		float max_score = 0.0F;
 		for (op = 0; op < NUMBER_OPS; op++)
 			if (tally[op] > max_score) {
 				max_score = tally[op];
@@ -141,10 +142,10 @@ void hurdles(registers_t *reg, array_scores *sc)
 {
 	// reset turn or stunned runner
 	if (!strcmp(reg->gpu, GAMEOVER) || reg->reg[player_idx + 3] || !playable_game(reg, HURDLE_RACE)) {
-		(*sc)[UP] = 0;    // +2 and jump
-		(*sc)[DOWN] = 0;  // +2
-		(*sc)[LEFT] = 0;  // +1
-		(*sc)[RIGHT] = 0; // +3
+		(*sc)[UP] = 0.0F;    // +2 and jump
+		(*sc)[DOWN] = 0.0F;  // +2
+		(*sc)[LEFT] = 0.0F;  // +1
+		(*sc)[RIGHT] = 0.0F; // +3
 		return;
 	}
 
@@ -154,28 +155,28 @@ void hurdles(registers_t *reg, array_scores *sc)
 		;
 	switch (aim - pos) { // finish line = TRACK_LEN - 1
 	case 1: // next to hurdle
-		(*sc)[UP] = 12;
-		(*sc)[DOWN] = -2;
-		(*sc)[LEFT] = -2;
-		(*sc)[RIGHT] = -2;
+		(*sc)[UP] = 12.0F;
+		(*sc)[DOWN] = -2.0F;
+		(*sc)[LEFT] = -2.0F;
+		(*sc)[RIGHT] = -2.0F;
 		return;
 	case 2: // one space to hurdle or next to finish line
-		(*sc)[UP] = aim != TRACK_LEN ? -2 : 0;
-		(*sc)[DOWN] = aim != TRACK_LEN ? -2 : 0;
-		(*sc)[LEFT] = aim != TRACK_LEN ? 12 : 0;
-		(*sc)[RIGHT] = aim != TRACK_LEN ? -2 : 0;
+		(*sc)[UP] = aim != TRACK_LEN ? -2.0F : 0.0F;
+		(*sc)[DOWN] = aim != TRACK_LEN ? -2.0F : 0.0F;
+		(*sc)[LEFT] = aim != TRACK_LEN ? 12.0F : 0.0F;
+		(*sc)[RIGHT] = aim != TRACK_LEN ? -2.0F : 0.0F;
 		return;
 	case 3: // two spaces to hurdle or one space to finish line
-		(*sc)[UP] = 10;
-		(*sc)[DOWN] = 10;
-		(*sc)[LEFT] = 5;
-		(*sc)[RIGHT] = aim != TRACK_LEN ? -2 : 10;
+		(*sc)[UP] = 10.0F;
+		(*sc)[DOWN] = 10.0F;
+		(*sc)[LEFT] = 5.0F;
+		(*sc)[RIGHT] = aim != TRACK_LEN ? -2.0F : 10.0F;
 		return;
 	default: // three+ spaces to hurdle or finish line
-		(*sc)[UP] = 7;
-		(*sc)[DOWN] = 7;
-		(*sc)[LEFT] = 3;
-		(*sc)[RIGHT] = 10;
+		(*sc)[UP] = 6.67F;
+		(*sc)[DOWN] = 6.67F;
+		(*sc)[LEFT] = 3.33F;
+		(*sc)[RIGHT] = 10.0F;
 		return;
 	}
 }
@@ -185,6 +186,7 @@ void hurdles(registers_t *reg, array_scores *sc)
 #define ABS(a) ((a) < 0 ? (-a) : (a))
 #define SIGN(a) ((a) < 0 ? -1 : (a) > 0 ? 1 : 0)
 
+/*
 short root2(const short S, short x0)
 {
 	short x1;
@@ -193,8 +195,9 @@ short root2(const short S, short x0)
 
 	return x0;
 }
+*/
 
-void best_archery_solutions(short *dst, const short x0, const short y0, char *winds, short shots)
+void best_archery_solutions(float *dst, const short x0, const short y0, char *winds, short shots)
 {
 	// ( x1, y1 ): next cursor position, for each direction
 	short x1[NUMBER_OPS], y1[NUMBER_OPS];
@@ -206,14 +209,15 @@ void best_archery_solutions(short *dst, const short x0, const short y0, char *wi
 	x1[RIGHT] = MIN(x0 + wind, 20), y1[RIGHT] = y0;
 	if (--shots)
 		for (enum ops op = 0; op < NUMBER_OPS; op++) {
-			short dst2[NUMBER_OPS];
+			float dst2[NUMBER_OPS];
 			best_archery_solutions(dst2, x1[op], y1[op], winds + 1, shots);
 			dst[op] = MIN(dst2[UP], MIN(dst2[DOWN], MIN(dst2[LEFT], dst2[RIGHT])));
 		}
 	else
 		for (enum ops op = 0; op < NUMBER_OPS; op++)
-			 dst[op] = root2(x1[op] * x1[op] + y1[op] * y1[op],
-					 (ABS(x1[op]) + ABS(y1[op])));
+			dst[op] = sqrtf(x1[op] * x1[op] + y1[op] * y1[op]);
+			/* dst[op] = root2(x1[op] * x1[op] + y1[op] * y1[op],
+					 (ABS(x1[op]) + ABS(y1[op]))); */
 }
 
 #define SHOTS_TO_CONSIDER 3 // NOTE: # of cases to consider grows as 4^(SHOTS_TO_CONSIDER)
@@ -222,10 +226,10 @@ void best_archery_solutions(short *dst, const short x0, const short y0, char *wi
 void archery(registers_t *reg, array_scores *sc)
 {
 	if (!strcmp(reg->gpu, GAMEOVER) || !playable_game(reg, ARCHERY)) {
-		(*sc)[UP] = 0;
-		(*sc)[DOWN] = 0;
-		(*sc)[LEFT] = 0;
-		(*sc)[RIGHT] = 0;
+		(*sc)[UP] = 0.0F;
+		(*sc)[DOWN] = 0.0F;
+		(*sc)[LEFT] = 0.0F;
+		(*sc)[RIGHT] = 0.0F;
 		return;
 	}
 
@@ -234,15 +238,14 @@ void archery(registers_t *reg, array_scores *sc)
 	const short x0 = reg->reg[player_idx << 1];
 	const short y0 = reg->reg[(player_idx << 1) + 1];
 	// Euclidean: measure of distance to bullseye
-	short Euclidean[NUMBER_OPS];
+	float Euclidean[NUMBER_OPS];
 	best_archery_solutions(Euclidean, x0, y0, reg->gpu,
 			remaining <= SHOTS_TO_CONSIDER ? remaining : 1);
 	for (enum ops op = 0; op < NUMBER_OPS; op++) {
 		// lineal response; max = 10, indifference at 10 away (slope -1)
-		(*sc)[op] = 10 - Euclidean[op];
+		(*sc)[op] = 10.0F - Euclidean[op];
 		// only the last four turns really matter
-		(*sc)[op] *= remaining < 5 ? 4 : remaining < 9 ? 3 : 1;
-                (*sc)[op] /= 3;
+		(*sc)[op] *= (remaining < 5 ? 4.0F : remaining < 9 ? 3.0F : 1.0F) / 3.0F;
 	}
 }
 
@@ -252,10 +255,10 @@ void skating(registers_t *reg, array_scores *sc)
 	// reset turn or stunned skater
 	if (!strcmp(reg->gpu, GAMEOVER) || reg->reg[player_idx + 3] < 0
 			|| !playable_game(reg, ROLLER_SPEED_SKATING)) {
-		(*sc)[UP] = 0;
-		(*sc)[DOWN] = 0;
-		(*sc)[LEFT] = 0;
-		(*sc)[RIGHT] = 0;
+		(*sc)[UP] = 0.0F;
+		(*sc)[DOWN] = 0.0F;
+		(*sc)[LEFT] = 0.0F;
+		(*sc)[RIGHT] = 0.0F;
 		return;
 	}
 
@@ -264,23 +267,23 @@ void skating(registers_t *reg, array_scores *sc)
 		reg->reg[(player_idx + 1) % 3], // opponent 1
 		reg->reg[(player_idx + 2) % 3]  // opponent 2
 	};
-	const short advantage = SIGN(travelled[0] - MAX(travelled[1], travelled[2]));
+	const float advantage = (float)SIGN(travelled[0] - MAX(travelled[1], travelled[2]));
 	const short risk = reg->reg[player_idx + 3];
 	short risk_order; // stores the index in gpu of each operator
 	for (enum ops op = 0; op < NUMBER_OPS; op++) {
 		risk_order = strchr(reg->gpu, initials[op]) - reg->gpu;
 		switch (risk_order) {
 		case 0: // player +1 risk -1
-			(*sc)[op] = 5 + risk;
+			(*sc)[op] = 5.0F + (float)risk;
 			break;
 		case 1: // player +2
-			(*sc)[op] = 10;
+			(*sc)[op] = 10.0F;
 			break;
 		case 2: // player +2 risk +1
-			(*sc)[op] = 8 - (risk << 1) - advantage;
+			(*sc)[op] = 8.0F - (float)(risk << 1) - advantage;
 			break;
 		case 3: // player +3 risk +2
-			(*sc)[op] = 5 - (risk << 1) - advantage;
+			(*sc)[op] = 5.0F - (float)(risk << 1) - advantage;
 			break;
 		}
 	}
@@ -290,16 +293,17 @@ void skating(registers_t *reg, array_scores *sc)
 void diving(registers_t *reg, array_scores *sc)
 {
 	if (!strcmp(reg->gpu, GAMEOVER) || !playable_game(reg, DIVING)) {
-		(*sc)[UP] = 0;
-		(*sc)[DOWN] = 0;
-		(*sc)[LEFT] = 0;
-		(*sc)[RIGHT] = 0;
+		(*sc)[UP] = 0.0F;
+		(*sc)[DOWN] = 0.0F;
+		(*sc)[LEFT] = 0.0F;
+		(*sc)[RIGHT] = 0.0F;
 		return;
 	}
 
 	const char correct = *reg->gpu;
 	for (enum ops op = 0; op < NUMBER_OPS; op++)
-		(*sc)[op] = initials[op] == correct ? MIN((7 + reg->reg[player_idx + 3]), 12) : 0;
+		(*sc)[op] = initials[op] == correct ?
+				(float)MIN((7 + reg->reg[player_idx + 3]), 12) : 0.0F;
 }
 
 // Arithmetic series SERIES(a, b) = a + (a+1) + (a+2) + ... + (b-1) + b
