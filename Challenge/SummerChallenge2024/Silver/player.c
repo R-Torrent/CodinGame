@@ -309,21 +309,22 @@ void diving(registers_t *reg, array_scores *sc)
 int playable_game(registers_t *reg, enum games mg)
 {
 	const short remaining = GAME_DURATION - loop;
-	short current[3] = {
+	const short current[3] = {
 		reg->reg[player_idx],           // me
 		reg->reg[(player_idx + 1) % 3], // opponent 1
 		reg->reg[(player_idx + 2) % 3]  // opponent 2
 	};
-	short turns, potential[3], lazy_potential_pos, max_potential_pos;
+	short turns, leader, potential[3], lazy_potential_pos, max_potential_pos;
 
 	switch (mg) {
 	case HURDLE_RACE:
-		for (turns = 0; *current < TRACK_LEN - 1; turns++) {
+		leader = MAX(current[0], MAX(current[1], current[2]));
+		for (turns = 0; leader < TRACK_LEN - 1; turns++) {
 			short aim;
-			for (aim = *current + 1; aim < TRACK_LEN && reg->gpu[aim] == '.'; aim++)
+			for (aim = leader + 1; aim < TRACK_LEN && reg->gpu[aim] == '.'; aim++)
 				;
-			short diff = aim - *current - 1;
-			*current += diff ? MIN(3, diff) : 2;
+			short diff = aim - leader - 1;
+			leader += diff ? MIN(3, diff) : 2;
 		}
 
 		return turns <= remaining;
