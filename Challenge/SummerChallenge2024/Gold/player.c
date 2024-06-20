@@ -127,7 +127,8 @@ int main()
 		enum ops op;
 		for (mg = 0; mg < nb_games; mg++) {
 			mgames[mg](registers + mg, indiv + mg);
-			fprintf(stderr, "Mini-game: %s\n", played[mg]);
+                        fprintf(stderr,"%s: %d pts. -> %.2f mult.\n",
+					played[mg], detailed_score[mg], game_multiplier[mg]);
 			for (op = 0; op < NUMBER_OPS; op++)
 				fprintf(stderr, "  %s : %+06.2f\n", output[op], indiv[mg][op]);
 		}
