@@ -348,8 +348,10 @@ int playable_game(registers_t *reg, enum games mg)
 	case ARCHERY: return strlen(reg->gpu) <= remaining;
 	case ROLLER_SPEED_SKATING:
 		turns = reg->reg[6];
-		for (int i = 0; i < 3; i++)
-			potential[i] = current[i] + 3 * turns;
+		for (int i = 0; i < 3; i++) {
+			short stun_or_risk = reg->reg[(player_idx + i) % 3 + 3];
+			potential[i] = current[i] + 3 * (turns + (stun_or_risk < 0 ? stun_or_risk : 0));
+		}
 		// without advancing a single space, opponents moving by 3 every time
 		lazy_potential_pos = 1 + (potential[1] >= current[0]) + (potential[2] >= current[0]);
 		// potentially sprinting by 3 spaces, opponents none
