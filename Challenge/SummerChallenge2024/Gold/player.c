@@ -354,10 +354,10 @@ int playable_game(registers_t *reg, enum games mg)
 			potential[i] = current[i] + 3 * (turns + (stun_or_risk < 0 ? stun_or_risk : 0));
 		}
 		// without advancing a single space, opponents moving by 3 every time
+		// (to bolster competitiveness, ties are considered a lost place)
 		lazy_potential_pos = 1 + (potential[1] >= current[0]) + (potential[2] >= current[0]);
 		// potentially sprinting by 3 spaces, opponents none
-		max_potential_pos = 1 + (current[1] >= potential[0]) + (current[2] >= potential[0]);
-		// (to bolster competitiveness, ties are considered a lost place)
+		max_potential_pos = 1 + (current[1] > potential[0]) + (current[2] > potential[0]);
 
 		return turns <= remaining && lazy_potential_pos != 1 && max_potential_pos != 3;
 	case DIVING: default:
@@ -367,10 +367,10 @@ int playable_game(registers_t *reg, enum games mg)
 			potential[i] = current[i] + SERIES(combo, combo + turns - 1);
 		}
 		// without scoring a single extra point, opponents scoring every time
+		// (to bolster competitiveness, ties are considered a lost place)
 		lazy_potential_pos = 1 + (potential[1] >= current[0]) + (potential[2] >= current[0]);
 		// potentially earning all the possible points, opponents none
-		max_potential_pos = 1 + (current[1] >= potential[0]) + (current[2] >= potential[0]);
-		// (to bolster competitiveness, ties are considered a lost place)
+		max_potential_pos = 1 + (current[1] > potential[0]) + (current[2] > potential[0]);
 
 		return turns <= remaining && lazy_potential_pos != 1 && max_potential_pos != 3;
 	}
