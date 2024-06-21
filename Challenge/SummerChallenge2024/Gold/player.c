@@ -102,7 +102,7 @@ int main()
 			detailed_score[mg] = 3 * own_medals[mg][0] + own_medals[mg][1];
 		float game_multiplier[NUMBER_MGAMES];
 		for (mg = 0; mg < nb_games; mg++) {
-			float average_other = 0.0F, deviation;; 
+			float average_other = 0.0F, deviation;
 			for (int i = 1; i < NUMBER_MGAMES; i++)
 				average_other += detailed_score[(mg + i) % NUMBER_MGAMES];
 			average_other /= (float)(NUMBER_MGAMES - 1);
@@ -280,6 +280,7 @@ void skating(registers_t *reg, array_scores *sc)
 		reg->reg[(player_idx + 1) % 3], // opponent 1
 		reg->reg[(player_idx + 2) % 3]  // opponent 2
 	};
+	const int not_last_turn = reg->reg[6] != 1;
 	const float advantage = (float)SIGN(travelled[0] - MAX(travelled[1], travelled[2]));
 	const short risk = reg->reg[player_idx + 3];
 	short risk_order; // stores the index in gpu of each operator
@@ -287,16 +288,16 @@ void skating(registers_t *reg, array_scores *sc)
 		risk_order = strchr(reg->gpu, initials[op]) - reg->gpu;
 		switch (risk_order) {
 		case 0: // player +1 risk -1
-			(*sc)[op] = 5.0F + (float)risk;
+			(*sc)[op] = not_last_turn ? 5.0F + (float)risk : 3.33F;
 			break;
 		case 1: // player +2
-			(*sc)[op] = 10.0F;
+			(*sc)[op] = not_last_turn ? 10.0F : 6.67F;
 			break;
 		case 2: // player +2 risk +1
-			(*sc)[op] = 8.0F - (float)(risk << 1) - advantage;
+			(*sc)[op] = not_last_turn ? 8.0F - (float)(risk << 1) - advantage : 6.67F;
 			break;
 		case 3: // player +3 risk +2
-			(*sc)[op] = 5.0F - (float)(risk << 1) - advantage;
+			(*sc)[op] = not_last_turn ? 5.0F - (float)(risk << 1) - advantage : 10.0F;
 			break;
 		}
 	}
