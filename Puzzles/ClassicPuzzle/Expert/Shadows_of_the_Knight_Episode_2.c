@@ -99,7 +99,7 @@ int main()
 			target_y = jump.y > 0 ? jump.y - 1 : jump.y < building_y - 1 ? jump.y + 1 : jump.y;
 		jumps[H] = (point_t){ target_x, jump.y };
 		jumps[V] = (point_t){ jump.x, target_y };
-		jumps[D] = cm;
+		jumps[D] = (point_t){ rect.p0.x + 2 * rect.w / 3, rect.p0.y + 2 * rect.h / 3 };
 
 		int score_jumps[2];
 		int cut_x = (target_x + jump.x) / 2;
