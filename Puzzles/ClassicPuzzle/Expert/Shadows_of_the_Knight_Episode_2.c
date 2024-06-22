@@ -104,19 +104,17 @@ int main()
 		int score_jumps[2];
 		int cut_x = (target_x + jump.x) / 2;
 		score_jumps[H] = ((rect.p0.x <= cut_x && cut_x < rect.p1.x ||
-					cut_x == rect.p1.x && rect.w % 2) && (target_x != jump.x)) * rect.h;
+					cut_x == rect.p1.x && rect.w % 2) && target_x != jump.x && rect.w > 1) * rect.h;
 		int cut_y = (target_y + jump.y) / 2;
 		score_jumps[V] = ((rect.p0.y <= cut_y && cut_y < rect.p1.y ||
-					cut_y == rect.p1.y && rect.h % 2) && (target_y != jump.y)) * rect.w;
+					cut_y == rect.p1.y && rect.h % 2) && target_y != jump.y && rect.h > 1) * rect.w;
 
 		// jump favors shorter sides
 		// diagonal jump occurs only if 'cut' falls outside of rectangle
-		if (!score_jumps[H] && !score_jumps[V])
-			dir = D;
-		dir = score_jumps[H] > score_jumps[V] ? H :
-				score_jumps[H] < score_jumps[V] ? V :
-						rect.w % 2 || !(rect.h % 2) ? H :
-								V;
+		dir = !score_jumps[H] && !score_jumps[V] ? D :
+				score_jumps[H] > score_jumps[V] ? H :
+						score_jumps[H] < score_jumps[V] ? V :
+								rect.w % 2 || !(rect.h % 2) ? H : V;
 
 		last = jump;
 		jump = jumps[dir];
