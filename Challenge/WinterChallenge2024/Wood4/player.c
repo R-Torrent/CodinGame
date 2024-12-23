@@ -75,7 +75,7 @@ struct entity {
     int distance_to_root;
     int distance_to_organism;
     struct entity *closest_organ;
-    struct entity *neigbors[4];
+    struct entity *neighbors[4];
 };
 
 struct list {
@@ -90,12 +90,46 @@ size_t determine(char *options[], char *selection)
             return o - options;
 }
 
+#define MAX 1000
+
 int distance(struct entity *pe0, struct entity *pe1)
 {
     return abs(pe1->x - pe0->x) + abs(pe1->y - pe0->y);
 }
 
-#define INIT 1000
+int list_contains(struct list *list, struct entity *pe)
+{
+    if (!pe)
+        return 0;
+    for (struct list *l = list; l != NULL; l = l->next) {
+        fprintf(stderr, "Candidate protein A source: (%d, %d)\n", l->e->x, l->e->y);
+        if (l->e == pe)
+            return 1;
+    }
+    fprintf(stderr, "Protein source not found or unreachable!\n");
+    return 0;
+}
+
+void clear_list(struct list **plist)
+{
+    struct list *next;
+
+    while (*plist)
+    {
+        next = (*plist)->next;
+        free(*plist);
+        *plist = next;
+    }
+}
+
+void refresh_entity(struct entity *ents, int size, struct entity *prev, struct entity **new)
+{
+    for (struct entity *pe = ents; pe - ents < size; pe++)
+        if (pe->x == prev->x && pe->y == prev->y) {
+            *new = pe;
+            return;
+        }
+}
 
 int main()
 {
@@ -105,6 +139,9 @@ int main()
     int height;
     scanf("%d%d", &width, &height);
 
+    // protein source target
+    struct entity *targetA = NULL;
+    struct entity previous_targetA;
     // game loop
     for (int loop = 0; ; loop++) {
         struct entity *my_root;
@@ -147,7 +184,7 @@ int main()
 
         for (struct entity *pe0 = ent; pe0 - ent < entity_count; pe0++) {
             pe0->distance_to_root = distance(pe0, my_root);
-            pe0->distance_to_organism = INIT;
+            pe0->distance_to_organism = MAX;
             pe0->closest_organ = NULL;
             for (struct entity *pe1 = ent; pe1 - ent < entity_count; pe1++) {
                 if (pe1->owner != 1)
@@ -158,27 +195,19 @@ int main()
                     pe0->closest_organ = pe1;
                 }
             }
-            pe0->neigbors[N] = NULL;
-            pe0->neigbors[E] = NULL;
-            pe0->neigbors[S] = NULL;
-            pe0->neigbors[W] = NULL;
+            pe0->neighbors[N] = NULL;
+            pe0->neighbors[E] = NULL;
+            pe0->neighbors[S] = NULL;
+            pe0->neighbors[W] = NULL;
             for (struct entity *pe1 = ent; pe1 - ent < entity_count; pe1++) {
-                if (pe0->y - 1 == pe1->y) {
-                    pe0->neigbors[N] = pe1;
-                    break;
-                }
-                if (pe0->x + 1 == pe1->x) {
-                    pe0->neigbors[E] = pe1;
-                    break;
-                }
-                if (pe0->y + 1 == pe1->y) {
-                    pe0->neigbors[S] = pe1;
-                    break;
-                }
-                if (pe0->x - 1 == pe1->x) {
-                    pe0->neigbors[W] = pe1;
-                    break;
-                }
+                if (pe0->x == pe1->x && pe0->y - 1 == pe1->y)
+                    pe0->neighbors[N] = pe1;
+                if (pe0->x + 1 == pe1->x && pe0->y == pe1->y)
+                    pe0->neighbors[E] = pe1;
+                if (pe0->x == pe1->x && pe0->y + 1 == pe1->y)
+                    pe0->neighbors[S] = pe1;
+                if (pe0->x - 1 == pe1->x && pe0->y == pe1->y)
+                    pe0->neighbors[W] = pe1;
             }
         }
 
@@ -194,56 +223,62 @@ int main()
             proteinA_candidates = new;
             number_candidates++;
         }
-        struct entity *targetA = NULL;
-        if (number_candidates) {
-            fprintf(stderr, "Strategy: Go for the proteins\n");
-            // candidates ordered according to distance from root
-            for (struct list *pA0 = proteinA_candidates; pA0 != NULL; pA0 = pA0->next)
-                for (struct list *pA1 = pA0; pA1->next != NULL; pA1 = pA1->next)
-                    if (pA1->e->distance_to_root > pA1->next->e->distance_to_root) {
-                        struct entity *temp = pA1->e;
-                        pA1->e = pA1->next->e;
-                        pA1->next->e = temp;
-                    }      
-            // pick the first candidate after the half-way mark
-            int target_index = number_candidates / 2 + number_candidates % 2 - 1;
-            struct list *listA = proteinA_candidates;
-            while (target_index--)
-                listA = listA->next;
-            targetA = listA->e;
-            // clear list
-            struct list *next;
-            while (proteinA_candidates)
-            {
-                next = proteinA_candidates->next;
-                free(proteinA_candidates);
-                proteinA_candidates = next;
+
+        if (targetA) {
+            refresh_entity(ent, entity_count, &previous_targetA, &targetA);
+            fprintf(stderr, "Target (%d, %d)\n", targetA->x, targetA->y);
+        }
+        if (!list_contains(proteinA_candidates, targetA)) {
+            fprintf(stderr, "Determining new target\n");
+            // Select new targetA
+            if (number_candidates) {
+                fprintf(stderr, "Strategy: Go for the proteins\n");
+                // candidates ordered according to distance from root
+                for (struct list *pA0 = proteinA_candidates; pA0 != NULL; pA0 = pA0->next)
+                    for (struct list *pA1 = pA0; pA1->next != NULL; pA1 = pA1->next)
+                        if (pA1->e->distance_to_root > pA1->next->e->distance_to_root) {
+                            struct entity *temp = pA1->e;
+                            pA1->e = pA1->next->e;
+                            pA1->next->e = temp;
+                        }      
+                // pick the first candidate after the half-way mark
+                int target_index = number_candidates / 2 + number_candidates % 2 - 1;
+                struct list *listA = proteinA_candidates;
+                while (target_index--)
+                    listA = listA->next;
+                targetA = listA->e;
+                fprintf(stderr, "New target (%d, %d)\n", targetA->x, targetA->y);
+                // clear list
+                clear_list(&proteinA_candidates);
+            }
+            else {
+                fprintf(stderr, "Strategy: Simply grow where possible\n");
+                // choose any empty slot next to an organ
+                for (struct entity *pe = ent; pe - ent < entity_count; pe++) {
+                    if (pe->owner != 1)
+                        continue;
+                    if (pe->y > 0 && !pe->neighbors[N]) {
+                        targetA = &(struct entity){.x = pe->x, .y = pe->y - 1, .closest_organ = pe};
+                        break;
+                    }
+                    if (pe->x < width - 1 && !pe->neighbors[E]) {
+                        targetA = &(struct entity){.x = pe->x + 1, .y = pe->y, .closest_organ = pe};
+                        break;
+                    }
+                    if (pe->y < height - 1 && !pe->neighbors[S]) {
+                        targetA = &(struct entity){.x = pe->x, .y = pe->y + 1, .closest_organ = pe};
+                        break;
+                    }
+                    if (pe->x > 0 && !pe->neighbors[W]) {
+                        targetA = &(struct entity){.x = pe->x - 1, .y = pe->y, .closest_organ = pe};
+                        break;
+                    }
+                    fprintf(stderr, "(%d, %d) ** no neighbors\n", pe->x, pe->y);
+                }
+                fprintf(stderr, "New target (%d, %d)\n", targetA->x, targetA->y);
             }
         }
-        else {
-            fprintf(stderr, "Strategy: Simply grow where possible\n");
-            // choose any empty slot next to an organ
-            for (struct entity *pe = ent; pe - ent < entity_count; pe++) {
-                if (pe->owner != 1)
-                    continue;
-                if (pe->y > 0 && !pe->neigbors[N]) {
-                    targetA = &(struct entity){pe->x, pe->y - 1};
-                    break;
-                }
-                if (pe->x < width - 1 && !pe->neigbors[E]) {
-                    targetA = &(struct entity){pe->x + 1, pe->y};
-                    break;
-                }
-                if (pe->y < height - 1 && !pe->neigbors[S]) {
-                    targetA = &(struct entity){pe->x, pe->y + 1};
-                    break;
-                }
-                if (pe->x > 0 && !pe->neigbors[W]) {
-                    targetA = &(struct entity){pe->x - 1, pe->y};
-                    break;
-                }
-            }
-        }
+
         // last resort, if error
         if (!targetA) {
             fprintf(stderr, "Missing target! Default -> enemy root\n");
@@ -261,6 +296,7 @@ int main()
                 printf(" glhf");
             putchar('\n');
         }
+        previous_targetA = *targetA;
     }
 
     return 0;
