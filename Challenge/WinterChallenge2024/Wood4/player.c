@@ -186,9 +186,7 @@ int main()
         struct list *proteinA_candidates = NULL;
         int number_candidates = 0;
         for (struct entity *pe = ent; pe - ent < entity_count; pe++) {
-            //if (pe->t != A || pe->distance_to_organism > my_a)
-            //    continue;
-            if (pe->t != A)
+            if (pe->t != A || pe->distance_to_organism > my_a)
                 continue;
             struct list *new = malloc(sizeof(struct list));
             new->e = pe;
@@ -198,6 +196,7 @@ int main()
         }
         struct entity *targetA = NULL;
         if (number_candidates) {
+            fprintf(stderr, "Strategy: Go for the proteins\n");
             // candidates ordered according to distance from root
             for (struct list *pA0 = proteinA_candidates; pA0 != NULL; pA0 = pA0->next)
                 for (struct list *pA1 = pA0; pA1->next != NULL; pA1 = pA1->next)
@@ -205,7 +204,7 @@ int main()
                         struct entity *temp = pA1->e;
                         pA1->e = pA1->next->e;
                         pA1->next->e = temp;
-                    }
+                    }      
             // pick the first candidate after the half-way mark
             int target_index = number_candidates / 2 + number_candidates % 2 - 1;
             struct list *listA = proteinA_candidates;
@@ -221,7 +220,8 @@ int main()
                 proteinA_candidates = next;
             }
         }
-        else
+        else {
+            fprintf(stderr, "Strategy: Simply grow where possible\n");
             // choose any empty slot next to an organ
             for (struct entity *pe = ent; pe - ent < entity_count; pe++) {
                 if (pe->owner != 1)
@@ -243,9 +243,12 @@ int main()
                     break;
                 }
             }
+        }
         // last resort, if error
-        if (!targetA)
+        if (!targetA) {
+            fprintf(stderr, "Missing target! Default -> enemy root\n");
             targetA = opp_root;
+        }
 
         for (int i = 0; i < required_actions_count; i++) {
             // Write an action using printf(). DON'T FORGET THE TRAILING \n
