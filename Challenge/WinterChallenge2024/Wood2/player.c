@@ -59,6 +59,18 @@ char *dir_str[] = {
 };
 #undef Y
 
+// status flags for the tiles
+// if A, B, C, D, or EMPTY then 0, 1 otherwise
+#define OCCUPIED 001
+// my protein source
+#define MY_SOURCE 002
+// opponent protein source
+#define OPP_SOURCE 004
+// protected by my tentacles
+#define PROTECTED 010
+// menaced by opponent tentacles
+#define MENACED 040
+
 struct entity {
     int x;
     // grid coordinate
@@ -73,9 +85,7 @@ struct entity {
     enum dir d;
     int organ_parent_id;
     int organ_root_id;
-    // if A, B, C, D, or EMPTY then 0, 1 otherwise
-    int occupied;
-    int distance_to_root;
+    int status;
     int distance_to_organism;
     struct entity *closest_organ;
 };
@@ -92,8 +102,6 @@ size_t determine_enum(char *options[], char *selection)
             return o - options;
 }
 
-#define MAX 1000
-
 void add_to_list(struct list **plist, struct entity *pe)
 {
     struct list *new = malloc(sizeof(struct list));
@@ -103,20 +111,39 @@ void add_to_list(struct list **plist, struct entity *pe)
     *plist = new;
 }
 
-void reorder_list(struct list *list, int (*compare)(struct entity *, struct entity *))
+int list_size(struct list *list)
+{
+    int size = 0;
+
+    while (list) {
+        size++;
+        list = list->next;
+    }
+    return size;
+}
+
+void reorder_list(void *data, struct list *list,
+        int (*compare)(void *, struct entity *, struct entity *))
 {
     for (struct list *pe0 = list; pe0 != NULL; pe0 = pe0->next)
-        for (struct list *pe1 = pe0; pe1->next != NULL; pe1 = pe1->next)
-            if (compare(pe1->e, pe1->next->e) > 0) {
-                struct entity *temp = pe1->e;
-                pe1->e = pe1->next->e;
-                pe1->next->e = temp;
+        for (struct list *pe1 = pe0->next; pe1 != NULL; pe1 = pe1->next)
+            if (compare(data, pe0->e, pe1->e) > 0) {
+                struct entity *temp = pe0->e;
+                pe0->e = pe1->e;
+                pe1->e = temp;
             }
 }
 
-int compare_distance_to_root(struct entity *pe0, struct entity *pe1)
+int compare_lowest_id(void *data, struct entity *pe0, struct entity *pe1)
 {
-    return pe0->distance_to_root - pe1->distance_to_root;
+    (void)data;
+    return pe0->organ_id - pe1->organ_id;
+}
+
+int compare_closest_from_myroot(struct entity *my_root, struct entity *pe0, struct entity *pe1)
+{
+    return abs(pe0->x - my_root->x) + abs(pe0->y - my_root->y) -
+            (abs(pe1->x - my_root->x) + abs(pe1->y - my_root->y));
 }
 
 int remove_from_list(struct list **plist, struct entity *pe)
@@ -147,7 +174,14 @@ void clear_list(struct list **plist)
     }
 }
 
-void init_grid(int width, int height, struct entity tiles[width][height])
+// columns in the game grid
+int width;
+// rows in the game grid
+int height;
+// NT = width * height
+int NT;
+
+void init_grid(struct entity tiles[width][height])
 {
     const struct entity empty = {
         .t = EMPTY,
@@ -156,6 +190,7 @@ void init_grid(int width, int height, struct entity tiles[width][height])
         .d = X,
         .organ_parent_id = 0,
         .organ_root_id = 0,
+        .status = 0
     };
 
     for (int x = 0; x < width; x++)
@@ -166,64 +201,143 @@ void init_grid(int width, int height, struct entity tiles[width][height])
         }
 }
 
-#define EXPAND(a, b, c) (a) * (c) + (b)
-#define DISTANCES(x1, y1, x2, y2) distances[EXPAND(EXPAND((x1), (y1), height), EXPAND((x2), (y2), height), NT)]
-
-void Floyd_Warshall(int width, int height, int *distances, struct entity tiles[width][height])
+void determine_status(struct entity tiles[width][height])
 {
-    const int NT = width * height;
-    int *p, d;
-
-    // initialization
-    for (int i = 0; i < NT; i++)
-        for (int j = 0; j < NT; j++)
-            distances[EXPAND(i, j, NT)] = (i == j ? 0 : MAX);
     for (int x = 0; x < width; x++)
         for (int y = 0; y < height; y++) {
-            if (y > 0 && !(tiles[x][y].occupied && tiles[x][y - 1].occupied))
-                DISTANCES(x, y, x, y - 1) = 1;
-            if (x < width - 1 && !(tiles[x][y].occupied && tiles[x + 1][y].occupied))
-                DISTANCES(x, y, x + 1, y) = 1;
-            if (y < height - 1 && !(tiles[x][y].occupied && tiles[x][y + 1].occupied))
-                DISTANCES(x, y, x, y + 1) = 1;
-            if (x > 0  && !(tiles[x][y].occupied && tiles[x - 1][y].occupied))
-                DISTANCES(x, y, x - 1, y) = 1;
+            int t = tiles[x][y].t;
+            int source = (t == A || t == B || t == C || t == D);
+
+            if (y < height - 1 && tiles[x][y + 1].d == N) {
+                if (tiles[x][y + 1].t == HARVESTER)
+                    tiles[x][y].status |= tiles[x][y + 1].owner ? MY_SOURCE : OPP_SOURCE;
+                else if (tiles[x][y + 1].t == TENTACLE)
+                    tiles[x][y].status |= tiles[x][y + 1].owner ? PROTECTED : MENACED;
+            }
+            if (x > 0 && tiles[x - 1][y].d == E) {
+                if (tiles[x - 1][y].t == HARVESTER)
+                    tiles[x][y].status |= tiles[x - 1][y].owner ? MY_SOURCE : OPP_SOURCE;
+                else if (tiles[x - 1][y].t == TENTACLE)
+                    tiles[x][y].status |= tiles[x - 1][y].owner ? PROTECTED : MENACED;
+            }
+            if (y > 0 && tiles[x][y - 1].d == S) {
+                if (tiles[x][y - 1].t == HARVESTER)
+                    tiles[x][y].status |= tiles[x][y - 1].owner ? MY_SOURCE : OPP_SOURCE;
+                else if (tiles[x][y - 1].t == TENTACLE)
+                    tiles[x][y].status |= tiles[x][y - 1].owner ? PROTECTED : MENACED;
+            }
+            if (x < width - 1 && tiles[x + 1][y].d == W) {
+                if (tiles[x + 1][y].t == HARVESTER)
+                    tiles[x][y].status |= tiles[x + 1][y].owner ? MY_SOURCE : OPP_SOURCE;
+                else if (tiles[x + 1][y].t == TENTACLE)
+                    tiles[x][y].status |= tiles[x + 1][y].owner ? PROTECTED : MENACED;
+            }
+            if (!source && t != EMPTY)
+                tiles[x][y].status |= OCCUPIED;
+        }
+}
+
+#define FORBIDDEN 1000
+#define RESTRICTED 50
+
+#define EXPAND(a, b, c) (a) * (c) + (b)
+#define EXPAND2(x1, y1, x2, y2) EXPAND(EXPAND((x1), (y1), height), EXPAND((x2), (y2), height), NT)
+#define DISTANCES(x1, y1, x2, y2) distances[EXPAND2(x1, y1, x2, y2)]
+#define PREVIOUS(x1, y1, x2, y2) previous[EXPAND2(x1, y1, x2, y2)]
+
+void Floyd_Warshall(int *distances, struct entity **previous, struct entity tiles[width][height])
+{
+    int *p, d, i1, k1;
+
+    // initialization & restrict areas ahead of a tentacle
+    for (int i = 0; i < NT; i++)
+        for (int j = 0; j < NT; j++) {
+            int k = EXPAND(i, j, NT);
+            distances[k] = i == j ? 0 : FORBIDDEN;
+            previous[k] = i == j ? (struct entity *)tiles + i : NULL;
+        }
+    for (int x = 0; x < width; x++)
+        for (int y = 0; y < height; y++) {
+            if (y < height - 1) {
+                if (!(tiles[x][y].status & OCCUPIED && tiles[x][y + 1].status & OCCUPIED))
+                    DISTANCES(x, y, x, y + 1) =
+                            (tiles[x][y + 1].t != TENTACLE || tiles[x][y + 1].d != N) ? 1 :
+                            tiles[x][y + 1].owner ? RESTRICTED :
+                            FORBIDDEN;
+                PREVIOUS(x, y, x, y + 1) = &tiles[x][y];
+            }
+            if (x > 0) {
+                if (!(tiles[x][y].status & OCCUPIED && tiles[x - 1][y].status & OCCUPIED))
+                    DISTANCES(x, y, x - 1, y) =
+                            (tiles[x - 1][y].t != TENTACLE || tiles[x - 1][y].d != E) ? 1 :
+                            tiles[x - 1][y].owner ? RESTRICTED :
+                            FORBIDDEN;
+                PREVIOUS(x, y, x - 1, y) = &tiles[x][y];
+            }
+            if (y > 0) {
+                if (!(tiles[x][y].status & OCCUPIED && tiles[x][y - 1].status & OCCUPIED))
+                    DISTANCES(x, y, x, y - 1) =
+                            (tiles[x][y - 1].t != TENTACLE || tiles[x][y - 1].d != S) ? 1 :
+                            tiles[x][y - 1].owner ? RESTRICTED :
+                            FORBIDDEN;
+                PREVIOUS(x, y, x, y - 1) = &tiles[x][y];
+            }
+            if (x < width - 1) {
+                if (!(tiles[x][y].status & OCCUPIED && tiles[x + 1][y].status & OCCUPIED))
+                    DISTANCES(x, y, x + 1, y) =
+                            (tiles[x + 1][y].t != TENTACLE || tiles[x + 1][y].d != W) ? 1 :
+                            tiles[x + 1][y].owner ? RESTRICTED :
+                            FORBIDDEN;
+                PREVIOUS(x, y, x + 1, y) = &tiles[x][y];
+            }
         }
 
     // algorithm
     for (int k = 0; k < NT; k++)
         for (int i = 0; i < NT; i++)
             for (int j = 0; j < NT; j++)
-                if (*(p = distances + EXPAND(i, j, NT)) >
-                        (d = distances[EXPAND(i, k, NT)] + distances[EXPAND(k, j, NT)]))
+                if (*(p = distances + (i1 = EXPAND(i, j, NT))) >
+                        (d = distances[EXPAND(i, k, NT)] + distances[(k1 = EXPAND(k, j, NT))])) {
                     *p = d;
+                    previous[i1] = previous[k1];
+                }
+}
+
+// shortest path reconstruction from the Floyd-Warshall alorithm
+struct list *path_FW(struct list **ppath, struct entity tiles[width][height], struct entity **previous,
+        int x1, int y1, int x2, int y2)
+{
+    if (!previous[EXPAND2(x1, y1, x2, y2)])
+        return NULL;
+    add_to_list(ppath, &tiles[x2][y2]);
+    while (x1 != x2 || y1 != y2) {
+        struct entity *pe = previous[EXPAND2(x1, y1, x2, y2)];
+        x2 = pe->x;
+        y2 = pe->y;
+        add_to_list(ppath, &tiles[x2][y2]);
+    }
+    return *ppath;
 }
 
 int main()
 {
-    // columns in the game grid
-    int width;
-    // rows in the game grid
-    int height;
     scanf("%d%d", &width, &height);
-    const int NT = width * height;
+    NT = width * height;
 
     struct entity (*tiles)[height] = malloc(NT * sizeof(struct entity));
     int my_proteins[4];
     int opp_proteins[4];
     int *distances = malloc(NT * NT * sizeof(int));
+    struct entity **previous = malloc(NT * NT * sizeof(struct entity *));
 
-    // A protein points of interest
-    struct entity *harvestA = NULL;
-    struct entity *targetA = NULL;
-    struct entity *sourceA = NULL;
-
+    // organs of interest
     struct entity *my_root;
     struct entity *opp_root;
+    struct entity *target;
 
     // game loop
     for (int loop = 0; ; loop++) {
-        init_grid(width, height, tiles);
+        init_grid(tiles);
 
         int entity_count;
         scanf("%d", &entity_count);
@@ -232,11 +346,10 @@ int main()
             scanf("%d%d", &x, &y);
             char type[33];
             scanf("%s", type);
-            int t = tiles[x][y].t = (enum type)determine_enum(type_str, type);
-            tiles[x][y].occupied = (t != A && t != B && t != C && t != D && t != EMPTY);
+            tiles[x][y].t = (enum type)determine_enum(type_str, type);
             scanf("%d%d", &tiles[x][y].owner, &tiles[x][y].organ_id);
-            if (!loop && t == ROOT) {
-                if (tiles[x][y].owner == 1)
+            if (!loop && tiles[x][y].t == ROOT) {
+                if (tiles[x][y].owner)
                     my_root = &tiles[x][y];
                 else
                     opp_root = &tiles[x][y];
@@ -256,17 +369,15 @@ int main()
         int required_actions_count;
         scanf("%d", &required_actions_count);
 
-        // shortest path calculator
-        Floyd_Warshall(width, height, distances, tiles);
+        // determine status for each tile
+        determine_status(tiles);
 
-        // list of proteinA souces within reach
-        struct list *proteinA_candidates = NULL;
-        int number_candidates = 0;
+        // shortest path calculator
+        Floyd_Warshall(distances, previous, tiles);
 
         for (int x = 0; x < width; x++)
             for (int y = 0; y < height; y++) {
-                tiles[x][y].distance_to_root = DISTANCES(x, y, my_root->x, my_root->y);
-                tiles[x][y].distance_to_organism = MAX;
+                tiles[x][y].distance_to_organism = FORBIDDEN;
                 tiles[x][y].closest_organ = NULL;
                 for (int x1 = 0; x1 < width; x1++)
                     for (int y1 = 0; y1 < height; y1++) {
@@ -278,153 +389,100 @@ int main()
                             tiles[x][y].closest_organ = &tiles[x1][y1];
                         }
                         if (!d) // closest organ == itself!
-                            goto escape1;
+                            goto escape;
                     }
-escape1:        if (tiles[x][y].t == A && tiles[x][y].distance_to_organism <= my_proteins[A]) {
-                    add_to_list(&proteinA_candidates, &tiles[x][y]);
-                    number_candidates++;
+escape:         ;
+            }
+
+        if (target)
+                fprintf(stderr, "Previous target (%d, %d)\n", target->x, target->y);
+
+        struct list *vulnerable_organs = NULL;
+        struct list *accessible_organs = NULL;
+        struct list *vacant_slots = NULL;
+        struct list *path = NULL;
+        for (int x = 0; x < width; x++)
+            for (int y = 0; y < height; y++) {
+                if (!tiles[x][y].owner) {
+                    if (tiles[x][y].distance_to_organism == 2)
+                        add_to_list(&vulnerable_organs, &tiles[x][y]);
+                    if (tiles[x][y].distance_to_organism < FORBIDDEN)
+                        add_to_list(&accessible_organs, &tiles[x][y]);
                 }
+                else if (!(tiles[x][y].status & OCCUPIED)
+                        && tiles[x][y].distance_to_organism == 1)
+                    add_to_list(&vacant_slots, &tiles[x][y]);
             }
+        reorder_list(NULL, vulnerable_organs, compare_lowest_id);
+        reorder_list(NULL, accessible_organs, compare_lowest_id);
+        reorder_list(my_root, vacant_slots,
+                (int (*)(void *, struct entity *, struct entity *))compare_closest_from_myroot);
+        fprintf(stderr, "Vacant slots: %d\n", list_size(vacant_slots));
 
-        //for (int x = 0; x < width; x++)
-        //    for (int y = 0; y < height; y++)
-        //        if (tiles[x][y].organ_id)
-        //            fprintf(stderr, "Checking distance from my_root to organ_id %d (%d, %d): %d\n",
-        //                    tiles[x][y].organ_id, tiles[x][y].x, tiles[x][y].y,
-        //                    tiles[x][y].distance_to_root);
-
-        // candidates ordered according to distance from root
-        reorder_list(proteinA_candidates, compare_distance_to_root);
-        if (harvestA) {
-            if (harvestA->t == A)
-                fprintf(stderr, "Protein A objective (%d, %d)\n", harvestA->x, harvestA->y);
-            else {
-                fprintf(stderr, "Protein feeding objective (%d, %d) destroyed!\n", harvestA->x, harvestA->y);
-                harvestA = NULL;
-            }
-        }
-        if (targetA)
-                fprintf(stderr, "Previous growth target (%d, %d)\n", targetA->x, targetA->y);
-        if (sourceA) {
-            if (sourceA->t == A)
-                fprintf(stderr, "Steady source of A proteins (%d, %d)\n", sourceA->x, sourceA->y);
-            else {
-                fprintf(stderr, "Protein A source (%d, %d) destroyed!\n", sourceA->x, sourceA->y);
-                sourceA = NULL;
-            }
-        }
+        struct entity *my_organ;
+        enum type new_organ_type = BASIC;
+        enum dir new_organ_dir = N;
 
         // strategy selection
-        // primary objective: to establish protein A source
-        if (!harvestA && my_proteins[C] && my_proteins[D] && number_candidates) {
-            targetA = NULL;
-            fprintf(stderr, "Aiming for harvest source\n");
-            harvestA = proteinA_candidates->e;
-            fprintf(stderr, "New objective (%d, %d)\n", harvestA->x, harvestA->y);
+        // primary objective: to establish a tentacle if possible
+        if (vulnerable_organs && my_proteins[B] && my_proteins[C]) {
+            // select the oldest organ with, possibly, very many children
+            target = vulnerable_organs->e;
+            fprintf(stderr, "Aiming for an enemy organ. Targeting %d (%d, %d)\n",
+                    target->organ_id, target->x, target->y);
+            my_organ = target->closest_organ;
+            new_organ_type = TENTACLE;
+            path_FW(&path, tiles, previous, my_organ->x, my_organ->y, target->x, target->y);
+            target = path->next->e;
+            if (vulnerable_organs->e->x == target->x)
+                new_organ_dir = vulnerable_organs->e->y < target->y ? N : S;
+            else if (vulnerable_organs->e->y == target->y)
+                new_organ_dir = vulnerable_organs->e->x < target->x ? W : E;            
         }
-        // secondary objective: to gobble the other protein sources
-        else if (!harvestA && (!targetA || targetA->t != A)) {
-            // remove harvest source from candidate list
-            number_candidates -= remove_from_list(&proteinA_candidates, sourceA);
-            fprintf(stderr, "Determining new target\n");
-            // Select new targetA
-            if (number_candidates) {
-                fprintf(stderr, "Strategy: Go for the proteins\n");
-                // pick the first candidate after the half-way mark
-                int target_index = number_candidates / 2 + number_candidates % 2 - 1;
-                struct list *listA = proteinA_candidates;
-                while (target_index--)
-                    listA = listA->next;
-                targetA = listA->e;
-                fprintf(stderr, "New protein-rich target (%d, %d)\n", targetA->x, targetA->y);
-            }
-            else {
-                fprintf(stderr, "Strategy: Simply grow where possible\n");
-                // choose any empty slot next to an organ
-                for (int x = 0; x < width; x++)
-                    for (int y = 0; y < height; y++)
-                        if (tiles[x][y].t == EMPTY && tiles[x][y].distance_to_organism == 1) {
-                            targetA = &tiles[x][y];
-                            goto escape2;
-                        }
-escape2:        fprintf(stderr, "Empty slot to grow into (%d, %d)\n", targetA->x, targetA->y);
-            }
+        // secondary objective: to grow towards the oldest enemy organ possible (== lowest organ_id)
+        else if (accessible_organs && my_proteins[A]) {
+            target = accessible_organs->e;
+            fprintf(stderr, "Growing towards an enemy organ. Targeting %d (%d, %d)\n",
+                    target->organ_id, target->x, target->y);
+            my_organ = target->closest_organ;
+            path_FW(&path, tiles, previous, my_organ->x, my_organ->y, target->x, target->y);
+            target = path->next->e;
+            
+        }
+        // fallback strategy: to grow wherever possible
+        else if (vacant_slots && my_proteins[A]) {
+            target = vacant_slots->e;
+            my_organ = target->closest_organ;
+            fprintf(stderr, "Strategy: Simply grow where possible\n");
+            // choose any empty slot, favoring slots close from my_root and away from the tentacles
+            fprintf(stderr, "Empty slot to grow into (%d, %d)\n", target->x, target->y);
+        }
+        else {
+            fprintf(stderr, "Nothing to do!\n");
+            target = NULL;
         }
 
-        // clear candidate list
-        clear_list(&proteinA_candidates);
-
-        // error fallback strategy
-        if (!harvestA && !targetA) {
-            fprintf(stderr, "Something went wrong! Default behavior: Grow towards the enemy root\n");
-            targetA = opp_root;
-        }
+        // clear lists
+        clear_list(&vulnerable_organs);
+        clear_list(&accessible_organs);
+        clear_list(&vacant_slots);
+        clear_list(&path);
 
         for (int i = 0; i < required_actions_count; i++) {
 
             // Write an action using printf(). DON'T FORGET THE TRAILING \n
             // To debug: fprintf(stderr, "Debug messages...\n");
 
-            struct entity *my_organ, *objective = NULL;
-            enum type new_organ = BASIC;
-            enum dir harvester_dir = N;
-
-            if (targetA) { // grow towards other protein sources
-                my_organ = targetA->closest_organ;
-                objective = targetA;
-            }
-            else if (DISTANCES(harvestA->closest_organ->x, harvestA->closest_organ->y,
-                    harvestA->x, harvestA->y) > 2) { // grow towards primary protein source
-                my_organ = harvestA->closest_organ;
-                objective = harvestA;
-            }
-            else {
-                if (tiles[harvestA->x][harvestA->y + 1].t == EMPTY &&
-                        ((my_organ = &tiles[harvestA->x + 1][harvestA->y + 1])->owner == 1 ||
-                        (my_organ = &tiles[harvestA->x][harvestA->y + 2])->owner == 1 ||
-                        (my_organ = &tiles[harvestA->x - 1][harvestA->y + 1])->owner == 1)) {
-                    harvester_dir = N;
-                    objective = &(struct entity){.x = harvestA->x, .y = harvestA->y + 1};
-                }
-                else if (tiles[harvestA->x - 1][harvestA->y].t == EMPTY &&
-                        ((my_organ = &tiles[harvestA->x - 1][harvestA->y + 1])->owner == 1 ||
-                        (my_organ = &tiles[harvestA->x - 2][harvestA->y])->owner == 1 ||
-                        (my_organ = &tiles[harvestA->x - 1][harvestA->y - 1])->owner == 1)) {
-                    harvester_dir = E;
-                    objective = &(struct entity){.x = harvestA->x - 1, .y = harvestA->y};
-                }
-                else if (tiles[harvestA->x][harvestA->y - 1].t == EMPTY &&
-                        ((my_organ = &tiles[harvestA->x - 1][harvestA->y - 1])->owner == 1 ||
-                        (my_organ = &tiles[harvestA->x][harvestA->y - 2])->owner == 1 ||
-                        (my_organ = &tiles[harvestA->x + 1][harvestA->y - 1])->owner == 1)) {
-                    harvester_dir = S;
-                    objective = &(struct entity){.x = harvestA->x, .y = harvestA->y - 1};
-                }
-                else if (tiles[harvestA->x + 1][harvestA->y].t == EMPTY &&
-                        ((my_organ = &tiles[harvestA->x + 1][harvestA->y - 1])->owner == 1 ||
-                        (my_organ = &tiles[harvestA->x + 2][harvestA->y])->owner == 1 ||
-                        (my_organ = &tiles[harvestA->x + 1][harvestA->y + 1])->owner == 1)) {
-                    harvester_dir = W;
-                    objective = &(struct entity){.x = harvestA->x + 1, .y = harvestA->y};
-                }
-                if (objective) {
-                    new_organ = HARVESTER;
-                    sourceA = harvestA;
-                    harvestA = NULL;
-                }
-                else { // complicated cases, such as starting next to the protein source
-                    my_organ = harvestA->closest_organ;
-                    objective = opp_root;
-                }
-            }
-
             // output command
-            printf("GROW %d %d %d %s %s",
-                    my_organ->organ_id,
-                    objective->x,
-                    objective->y,
-                    type_str[new_organ],
-                    dir_str[harvester_dir]);
+            if (target)
+                printf("GROW %d %d %d %s %s",
+                        my_organ->organ_id,
+                        target->x,
+                        target->y,
+                        type_str[new_organ_type],
+                        dir_str[new_organ_dir]);
+            else
+                printf("WAIT");
             if (!loop)
                 printf(" glhf");
             putchar('\n');
