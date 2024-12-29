@@ -59,6 +59,13 @@ char *dir_str[] = {
 };
 #undef Y
 
+size_t determine_enum(char *options[], char *selection)
+{
+    for (char **o = options; ; o++)
+        if (!strcmp(*o, selection))
+            return o - options;
+}
+
 // status flags for the tiles
 // if A, B, C, D, or EMPTY then 0, 1 otherwise
 #define OCCUPIED 001
@@ -86,94 +93,146 @@ struct entity {
     int organ_parent_id;
     int organ_root_id;
     int status;
+    int value;
     int distance_to_organism;
     struct entity *closest_organ;
 };
 
-struct list {
+// linked list & hash map functions --------------------------------------------------------------
+
+struct node {
+    int key;
     struct entity *e;
-    struct list *next;
+    struct node *next;
 };
 
-size_t determine_enum(char *options[], char *selection)
+struct list {
+    int size;
+    struct node *node;
+};
+
+struct hash_map {
+    int size;
+    struct node **array;
+};
+
+struct list *create_list(void)
 {
-    for (char **o = options; ; o++)
-        if (!strcmp(*o, selection))
-            return o - options;
+    struct list *list = malloc(sizeof(struct list));
+
+    list->size = 0;
+    list->node = NULL;
+    return list;
 }
 
-void add_to_list(struct list **plist, struct entity *pe)
+void add_front_list(struct list *list, struct entity *entity)
 {
-    struct list *new = malloc(sizeof(struct list));
+    if (list) {
+        struct node *new = malloc(sizeof(struct node));
 
-    new->e = pe;
-    new->next = *plist;
-    *plist = new;
-}
-
-int list_size(struct list *list)
-{
-    int size = 0;
-
-    while (list) {
-        size++;
-        list = list->next;
+        new->e = entity;
+        new->next = list->node;
+        list->size++;
+        list->node = new;
     }
-    return size;
 }
 
 void reorder_list(void *data, struct list *list,
         int (*compare)(void *, struct entity *, struct entity *))
 {
-    for (struct list *pe0 = list; pe0 != NULL; pe0 = pe0->next)
-        for (struct list *pe1 = pe0->next; pe1 != NULL; pe1 = pe1->next)
-            if (compare(data, pe0->e, pe1->e) > 0) {
-                struct entity *temp = pe0->e;
-                pe0->e = pe1->e;
-                pe1->e = temp;
-            }
+    if (list)
+        for (struct node *n0 = list->node; n0 != NULL; n0 = n0->next)
+            for (struct node *n1 = n0->next; n1 != NULL; n1 = n1->next)
+                if (compare(data, n0->e, n1->e) > 0) {
+                    struct entity *temp = n0->e;
+                    n0->e = n1->e;
+                    n1->e = temp;
+                }
 }
 
-int compare_lowest_id(void *data, struct entity *pe0, struct entity *pe1)
+void remove_from_list(struct list *list, struct entity *entity)
 {
-    (void)data;
-    return pe0->organ_id - pe1->organ_id;
-}
+    if (!list || !entity)
+        return;
 
-int compare_closest_from_myroot(struct entity *my_root,
-        struct entity *pe0, struct entity *pe1)
-{
-    return abs(pe0->x - my_root->x) + abs(pe0->y - my_root->y) -
-            (abs(pe1->x - my_root->x) + abs(pe1->y - my_root->y));
-}
-
-int remove_from_list(struct list **plist, struct entity *pe)
-{
-    struct list *next;
-
-    if (!*plist || !pe)
-        return 0;
-    if ((*plist)->e == pe) {
-        next = (*plist)->next;
-        free(*plist);
-        *plist = next;
-        return 1 + remove_from_list(plist, pe);
-    }
-    else
-        return remove_from_list(&(*plist)->next, pe);
-}
-
-void clear_list(struct list **plist)
-{
-    struct list *next;
-
-    while (*plist)
-    {
-        next = (*plist)->next;
-        free(*plist);
-        *plist = next;
+    struct node **pn = &list->node, *next;
+    while (*pn) {
+        next = (*pn)->next;
+        if ((*pn)->e == entity) {
+            list->size--;
+            free(*pn);
+            *pn = next;
+        }
+        else
+            pn = &next;
     }
 }
+
+void clear_list(struct list *list)
+{
+    struct node *next;
+
+    if (list)
+        for (struct node *n = list->node; n; n = next) {
+            next = n->next;
+            free(n);
+            n = next;
+        }
+    free(list);
+}
+
+struct hash_map *create_hash_map(int size)
+{
+    struct hash_map *map = malloc(sizeof(struct hash_map));
+
+    map->size = size;
+    map->array = malloc(size * sizeof(struct node *));
+    for (int i = 0; i < size; i++)
+        map->array[i] = NULL;
+    return map;
+}
+
+int hash(int key, int size)
+{
+    return key % size;
+}
+
+void put_map(struct hash_map *map, int key, struct entity *pe)
+{
+    if (map) {;
+        struct node *new = malloc(sizeof(struct node));
+        int index = hash(key, map->size);
+
+        new->key = key;
+        new->e = pe;
+        new->next = map->array[index];
+        map->array[index] = new;
+    }
+}
+
+struct entity *get_map(struct hash_map *map, int key)
+{
+    if (map)
+        for (struct node *node = map->array[hash(key, map->size)];
+                node; node = node->next)
+            if (node->key == key)
+                return node->e;
+    return NULL;
+}
+
+void clear_map(struct hash_map *map)
+{
+    if (map)
+        for (struct node **pn = map->array; pn - map->array < map->size; pn++)
+            while (*pn) {
+                struct node *next = (*pn)->next;
+                free(*pn);
+                *pn = next;
+            };
+    free(map);
+}
+
+// auxiliary functions ----------------------------------------------------------------------
 
 // columns in the game grid
 int width;
@@ -191,7 +250,8 @@ void init_grid(struct entity tiles[width][height])
         .d = X,
         .organ_parent_id = 0,
         .organ_root_id = 0,
-        .status = 0
+        .status = 0,
+        .value = 0
     };
 
     for (int x = 0; x < width; x++)
@@ -236,6 +296,20 @@ void determine_status(struct entity tiles[width][height])
             if (!source && t != EMPTY)
                 tiles[x][y].status |= OCCUPIED;
         }
+}
+
+int compare_highest_value(void *data, struct entity *e0, struct entity *e1)
+{
+    (void)data;
+    return e1->value - e0->value;
+}
+
+int compare_closest_from_myroot(void *data, struct entity *e0, struct entity *e1)
+{
+    struct entity *my_root = (struct entity *)data;
+
+    return abs(e0->x - my_root->x) + abs(e0->y - my_root->y) -
+            (abs(e1->x - my_root->x) + abs(e1->y - my_root->y));
 }
 
 #define FORBIDDEN 1000
@@ -305,19 +379,21 @@ void Floyd_Warshall(int *distances, struct entity **previous, struct entity tile
 }
 
 // shortest path reconstruction from the Floyd-Warshall alorithm
-struct list *path_FW(struct list **ppath, struct entity tiles[width][height],
+struct list *path_FW(struct entity tiles[width][height],
         struct entity **previous, int x1, int y1, int x2, int y2)
 {
+    struct list *path = create_list();
+
     if (!previous[EXPAND2(x1, y1, x2, y2)])
         return NULL;
-    add_to_list(ppath, &tiles[x2][y2]);
+    add_front_list(path, &tiles[x2][y2]);
     while (x1 != x2 || y1 != y2) {
         struct entity *pe = previous[EXPAND2(x1, y1, x2, y2)];
         x2 = pe->x;
         y2 = pe->y;
-        add_to_list(ppath, &tiles[x2][y2]);
+        add_front_list(path, &tiles[x2][y2]);
     }
-    return *ppath;
+    return path;
 }
 
 enum dir face_to(struct entity *subject, struct entity *object)
@@ -331,11 +407,14 @@ enum dir face_to(struct entity *subject, struct entity *object)
     return X;
 }
 
+// main porgram  ------------------------------------------------------------------------------
+
 int main()
 {
     scanf("%d%d", &width, &height);
     NT = width * height;
 
+    // memmory allocation
     struct entity (*tiles)[height] = malloc(NT * sizeof(struct entity));
     int my_proteins[4];
     int opp_proteins[4];
@@ -350,28 +429,29 @@ int main()
     // game loop
     for (int loop = 0; ; loop++) {
         init_grid(tiles);
+        struct hash_map *organs = create_hash_map(NT + 1);
 
         int entity_count;
         scanf("%d", &entity_count);
         for (int i = 0; i < entity_count; i++) {
             int x, y;
             scanf("%d%d", &x, &y);
+            struct entity *entity = &tiles[x][y];
             char type[33];
             scanf("%s", type);
-            tiles[x][y].t = (enum type)determine_enum(type_str, type);
-            scanf("%d%d", &tiles[x][y].owner, &tiles[x][y].organ_id);
-            if (!loop && tiles[x][y].t == ROOT) {
-                if (tiles[x][y].owner)
-                    my_root = &tiles[x][y];
+            entity->t = (enum type)determine_enum(type_str, type);
+            scanf("%d%d", &entity->owner, &entity->organ_id);
+            if (!loop && entity->t == ROOT) {
+                if (entity->owner)
+                    my_root = entity;
                 else
-                    opp_root = &tiles[x][y];
+                    opp_root = entity;
             }
+            put_map(organs, entity->organ_id, entity);
             char organ_dir[2];
             scanf("%s", organ_dir);
-            tiles[x][y].d = (enum dir)determine_enum(dir_str, organ_dir);
-            scanf("%d%d",&tiles[x][y].organ_parent_id, &tiles[x][y].organ_root_id);
-            //fprintf(stderr, "(%d, %d): %d %s %s\n", x, y,
-            //        tiles[x][y].organ_id, type_str[tiles[x][y].t], dir_str[tiles[x][y].d]);
+            entity->d = (enum dir)determine_enum(dir_str, organ_dir);
+            scanf("%d%d",&entity->organ_parent_id, &entity->organ_root_id);
         }
         // your protein stock
         scanf("%d%d%d%d", my_proteins + A, my_proteins + B, my_proteins + C, my_proteins + D);
@@ -387,6 +467,24 @@ int main()
         // shortest path calculator
         Floyd_Warshall(distances, previous, tiles);
 
+        // calcultate entity values (its value + that of its descendants)
+        for (int x = 0; x < width; x++)
+            for (int y = 0; y < height; y++) {
+                int t = tiles[x][y].t;
+                int value = t == BASIC ? 1 : t == HARVESTER || t == TENTACLE
+                        || t == SPORER ? 2 : t == ROOT ? 3 : 0;
+
+                if (value) {
+                    struct entity *entity = get_map(organs, tiles[x][y].organ_id);
+                    while (entity->organ_parent_id) {
+                        entity->value += value;
+                        entity = get_map(organs, entity->organ_parent_id);
+                    };
+                    entity->value += value;
+                }
+            }
+
+        // calculate closest point to my_organism
         for (int x = 0; x < width; x++)
             for (int y = 0; y < height; y++) {
                 tiles[x][y].distance_to_organism = FORBIDDEN;
@@ -406,59 +504,69 @@ int main()
 escape:         ;
             }
 
+        // quality control -- print-out of the remarkable entities
+        for (int x = 0; x < width; x++)
+            for (int y = 0; y < height; y++) {
+                struct entity *e = &tiles[x][y];
+                if (e->t == WALL || e->t == EMPTY)
+                    continue;
+                fprintf(stderr, "(%d, %d) %s %s owner:%d id:%d parent_id:%d root_id:%d status:%d value:%d dist_to_%d:%d\n",
+                        x, y, type_str[e->t], dir_str[e->d], e->owner, e->organ_id, e->organ_parent_id,
+                        e->organ_root_id, e->status, e->value, e->closest_organ ? e->closest_organ->organ_id : 0,
+                        e->closest_organ ? e->distance_to_organism : FORBIDDEN);
+            }
         if (target)
                 fprintf(stderr, "Previous target (%d, %d)\n", target->x, target->y);
 
-        struct list *vulnerable_organs = NULL;
-        struct list *accessible_organs = NULL;
-        struct list *vacant_slots = NULL;
+        struct list *vulnerable_organs = create_list();
+        struct list *accessible_organs = create_list();
+        struct list *vacant_slots = create_list();
         struct list *path = NULL;
         for (int x = 0; x < width; x++)
             for (int y = 0; y < height; y++) {
-                if (!tiles[x][y].owner) {
-                    if (tiles[x][y].distance_to_organism == 2)
-                        add_to_list(&vulnerable_organs, &tiles[x][y]);
-                    if (tiles[x][y].distance_to_organism < FORBIDDEN)
-                        add_to_list(&accessible_organs, &tiles[x][y]);
+                struct entity *e = &tiles[x][y];
+                if (!e->owner) {
+                    if (e->distance_to_organism == 2)
+                        add_front_list(vulnerable_organs, e);
+                    if (e->distance_to_organism < FORBIDDEN)
+                        add_front_list(accessible_organs, e);
                 }
-                else if (!(tiles[x][y].status & OCCUPIED)
-                        && tiles[x][y].distance_to_organism == 1)
-                    add_to_list(&vacant_slots, &tiles[x][y]);
+                else if (!(e->status & OCCUPIED) && e->distance_to_organism == 1)
+                    add_front_list(vacant_slots, e);
             }
-        reorder_list(NULL, vulnerable_organs, compare_lowest_id);
-        reorder_list(NULL, accessible_organs, compare_lowest_id);
-        reorder_list(my_root, vacant_slots,
-                (int (*)(void *, struct entity *, struct entity *))compare_closest_from_myroot);
 
+        reorder_list(NULL, vulnerable_organs, compare_highest_value);
+        reorder_list(NULL, accessible_organs, compare_highest_value);
+        reorder_list(my_root, vacant_slots, compare_closest_from_myroot);
+
+        // strategy selection
         struct entity *my_organ;
         enum type new_organ_type = BASIC;
         enum dir new_organ_dir = N;
-
-        // strategy selection
         // primary objective: to establish a tentacle if possible
-        if (vulnerable_organs && my_proteins[B] && my_proteins[C]) {
-            // select the oldest organ with, possibly, very many children
-            target = vulnerable_organs->e;
+        if (vulnerable_organs->size && my_proteins[B] && my_proteins[C]) {
+            // select the highest-value enemy organ
+            target = vulnerable_organs->node->e;
             fprintf(stderr, "Aiming for an enemy organ. Targeting %d (%d, %d)\n",
                     target->organ_id, target->x, target->y);
             my_organ = target->closest_organ;
             new_organ_type = TENTACLE;
-            path_FW(&path, tiles, previous, my_organ->x, my_organ->y, target->x, target->y);
-            target = path->next->e;
-            new_organ_dir = face_to(target, vulnerable_organs->e);
+            path = path_FW(tiles, previous, my_organ->x, my_organ->y, target->x, target->y);
+            target = path->node->next->e;
+            new_organ_dir = face_to(target, vulnerable_organs->node->e);
         }
-        // secondary objective: to grow towards the oldest enemy organ possible (== lowest organ_id)
-        else if (accessible_organs && my_proteins[A]) {
-            target = accessible_organs->e;
+        // secondary objective: to grow towards the highest-value enemy organ
+        else if (accessible_organs->size && my_proteins[A]) {
+            target = accessible_organs->node->e;
             fprintf(stderr, "Growing towards an enemy organ. Targeting %d (%d, %d)\n",
                     target->organ_id, target->x, target->y);
             my_organ = target->closest_organ;
-            path_FW(&path, tiles, previous, my_organ->x, my_organ->y, target->x, target->y);
-            target = path->next->e;
+//            path = path_FW(tiles, previous, my_organ->x, my_organ->y, target->x, target->y);
+//            target = path->node->next->e;
         }
         // fallback strategy: to grow wherever possible
-        else if (vacant_slots && my_proteins[A]) {
-            target = vacant_slots->e;
+        else if (vacant_slots->size && my_proteins[A]) {
+            target = vacant_slots->node->e;
             my_organ = target->closest_organ;
             fprintf(stderr, "Strategy: Simply grow where possible\n");
             // choose any empty slot, favoring slots close from my_root and away from the tentacles
@@ -469,12 +577,12 @@ escape:         ;
             target = NULL;
         }
 
-        // clear lists
-        clear_list(&vulnerable_organs);
-        clear_list(&accessible_organs);
-        clear_list(&vacant_slots);
-        clear_list(&path);
-
+        // clear lists and maps
+        clear_list(vulnerable_organs);
+        clear_list(accessible_organs);
+        clear_list(vacant_slots);
+        clear_list(path);
+        clear_map(organs);
         for (int i = 0; i < required_actions_count; i++) {
 
             // Write an action using printf(). DON'T FORGET THE TRAILING \n
