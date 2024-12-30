@@ -102,7 +102,7 @@ struct entity {
 
 struct node {
     int key;
-    struct entity *e;
+    void *content;
     struct node *next;
 };
 
@@ -125,12 +125,12 @@ struct list *create_list(void)
     return list;
 }
 
-void add_front_list(struct list *list, struct entity *entity)
+void add_front_list(struct list *list, void *content)
 {
     if (list) {
         struct node *new = malloc(sizeof(struct node));
 
-        new->e = entity;
+        new->content = content;
         new->next = list->node;
         list->size++;
         list->node = new;
@@ -138,27 +138,27 @@ void add_front_list(struct list *list, struct entity *entity)
 }
 
 void reorder_list(void *data, struct list *list,
-        int (*compare)(void *, struct entity *, struct entity *))
+        int (*compare)(void *, void *, void *))
 {
     if (list)
         for (struct node *n0 = list->node; n0 != NULL; n0 = n0->next)
             for (struct node *n1 = n0->next; n1 != NULL; n1 = n1->next)
-                if (compare(data, n0->e, n1->e) > 0) {
-                    struct entity *temp = n0->e;
-                    n0->e = n1->e;
-                    n1->e = temp;
+                if (compare(data, n0->content, n1->content) > 0) {
+                    void *temp = n0->content;
+                    n0->content = n1->content;
+                    n1->content = temp;
                 }
 }
 
-void remove_from_list(struct list *list, struct entity *entity)
+void remove_from_list(struct list *list, void *content)
 {
-    if (!list || !entity)
+    if (!list || !content)
         return;
 
     struct node **pn = &list->node, *next;
     while (*pn) {
         next = (*pn)->next;
-        if ((*pn)->e == entity) {
+        if ((*pn)->content == content) {
             list->size--;
             free(*pn);
             *pn = next;
@@ -197,26 +197,26 @@ int hash(int key, int size)
     return key % size;
 }
 
-void put_map(struct hash_map *map, int key, struct entity *pe)
+void put_map(struct hash_map *map, int key, void *content)
 {
     if (map) {;
         struct node *new = malloc(sizeof(struct node));
         int index = hash(key, map->size);
 
         new->key = key;
-        new->e = pe;
+        new->content = content;
         new->next = map->array[index];
         map->array[index] = new;
     }
 }
 
-struct entity *get_map(struct hash_map *map, int key)
+void *get_map(struct hash_map *map, int key)
 {
     if (map)
         for (struct node *node = map->array[hash(key, map->size)];
                 node; node = node->next)
             if (node->key == key)
-                return node->e;
+                return node->content;
     return NULL;
 }
 
@@ -418,6 +418,8 @@ int main()
     struct entity (*tiles)[height] = malloc(NT * sizeof(struct entity));
     int my_proteins[4];
     int opp_proteins[4];
+    int my_sources[4];
+    int opp_sources[4];
     int *distances = malloc(NT * NT * sizeof(int));
     struct entity **previous = malloc(NT * NT * sizeof(struct entity *));
 
@@ -430,6 +432,8 @@ int main()
     for (int loop = 0; ; loop++) {
         init_grid(tiles);
         struct hash_map *organs = create_hash_map(NT + 1);
+        memset(my_sources, 0, 4 * sizeof(int));
+        memset(opp_sources, 0, 4 * sizeof(int));
 
         int entity_count;
         scanf("%d", &entity_count);
@@ -467,14 +471,19 @@ int main()
         // shortest path calculator
         Floyd_Warshall(distances, previous, tiles);
 
-        // calcultate entity values (its value + that of its descendants)
+        // calcultate entity values and active protein sources
+        // value = its own + that of all its descendants
         for (int x = 0; x < width; x++)
             for (int y = 0; y < height; y++) {
                 int t = tiles[x][y].t;
                 int value = t == BASIC ? 1 : t == HARVESTER || t == TENTACLE
                         || t == SPORER ? 2 : t == ROOT ? 3 : 0;
 
-                if (value) {
+                if (tiles[x][y].status & MY_SOURCE)
+                    my_sources[t]++;
+                else if (tiles[x][y].status & OPP_SOURCE)
+                    opp_sources[t]++;
+                else if (value) {
                     struct entity *entity = get_map(organs, tiles[x][y].organ_id);
                     while (entity->organ_parent_id) {
                         entity->value += value;
@@ -535,9 +544,9 @@ escape:         ;
                     add_front_list(vacant_slots, e);
             }
 
-        reorder_list(NULL, vulnerable_organs, compare_highest_value);
-        reorder_list(NULL, accessible_organs, compare_highest_value);
-        reorder_list(my_root, vacant_slots, compare_closest_from_myroot);
+        reorder_list(NULL, vulnerable_organs, (int (*)(void *, void *, void *))compare_highest_value);
+        reorder_list(NULL, accessible_organs, (int (*)(void *, void *, void *))compare_highest_value);
+        reorder_list(my_root, vacant_slots, (int (*)(void *, void *, void *))compare_closest_from_myroot);
 
         // strategy selection
         struct entity *my_organ;
@@ -546,18 +555,18 @@ escape:         ;
         // primary objective: to establish a tentacle if possible
         if (vulnerable_organs->size && my_proteins[B] && my_proteins[C]) {
             // select the highest-value enemy organ
-            target = vulnerable_organs->node->e;
+            target = vulnerable_organs->node->content;
             fprintf(stderr, "Aiming for an enemy organ. Targeting %d (%d, %d)\n",
                     target->organ_id, target->x, target->y);
             my_organ = target->closest_organ;
             new_organ_type = TENTACLE;
             path = path_FW(tiles, previous, my_organ->x, my_organ->y, target->x, target->y);
-            target = path->node->next->e;
-            new_organ_dir = face_to(target, vulnerable_organs->node->e);
+            target = path->node->next->content;
+            new_organ_dir = face_to(target, vulnerable_organs->node->content);
         }
         // secondary objective: to grow towards the highest-value enemy organ
         else if (accessible_organs->size && my_proteins[A]) {
-            target = accessible_organs->node->e;
+            target = accessible_organs->node->content;
             fprintf(stderr, "Growing towards an enemy organ. Targeting %d (%d, %d)\n",
                     target->organ_id, target->x, target->y);
             my_organ = target->closest_organ;
@@ -566,7 +575,7 @@ escape:         ;
         }
         // fallback strategy: to grow wherever possible
         else if (vacant_slots->size && my_proteins[A]) {
-            target = vacant_slots->node->e;
+            target = vacant_slots->node->content;
             my_organ = target->closest_organ;
             fprintf(stderr, "Strategy: Simply grow where possible\n");
             // choose any empty slot, favoring slots close from my_root and away from the tentacles
