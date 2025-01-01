@@ -59,6 +59,23 @@ char *dir_str[] = {
 };
 #undef Y
 
+#define OWNERSHIP   \
+Z(MY)               \
+Z(OPP)              \
+Z(FREE)
+
+#define Z(a) a,
+enum ownership {
+    OWNERSHIP
+};
+#undef Z
+
+#define Z(a) #a,
+char *owner_str[] = {
+    OWNERSHIP
+};
+#undef Z
+
 size_t determine_enum(char *options[], char *selection)
 {
     for (char **o = options; ; o++)
@@ -68,15 +85,15 @@ size_t determine_enum(char *options[], char *selection)
 
 // status flags for the tiles
 // if A, B, C, D, or EMPTY then 0, 1 otherwise
-#define OCCUPIED 001
+#define OCCUPIED   001
 // my protein source
-#define MY_SOURCE 002
+#define MY_SOURCE  002
 // opponent protein source
 #define OPP_SOURCE 004
 // protected by my tentacles
-#define PROTECTED 010
+#define PROTECTED  010
 // menaced by opponent tentacles
-#define MENACED 040
+#define MENACED    040
 
 struct entity {
     int x;
@@ -84,8 +101,8 @@ struct entity {
     int y;
     // A, B, C, D, EMPTY, WALL, ROOT, BASIC, TENTACLE, HARVESTER, SPORER
     enum type t;
-    // 1 if your organ, 0 if enemy organ, -1 if neither
-    int owner;
+    // MY if your organ, OPP if enemy organ, FREE if neither
+    enum ownership o;
     // id of this entity if it's an organ, 0 otherwise
     int organ_id;
     // N,E,S,W or X if not an organ
@@ -245,7 +262,7 @@ void init_grid(struct entity tiles[width][height])
 {
     const struct entity empty = {
         .t = EMPTY,
-        .owner = -1,
+        .o = FREE,
         .organ_id = 0,
         .d = X,
         .organ_parent_id = 0,
@@ -271,27 +288,27 @@ void determine_status(struct entity tiles[width][height])
 
             if (y < height - 1 && tiles[x][y + 1].d == N) {
                 if (tiles[x][y + 1].t == HARVESTER)
-                    tiles[x][y].status |= tiles[x][y + 1].owner ? MY_SOURCE : OPP_SOURCE;
+                    tiles[x][y].status |= tiles[x][y + 1].o == MY ? MY_SOURCE : OPP_SOURCE;
                 else if (tiles[x][y + 1].t == TENTACLE)
-                    tiles[x][y].status |= tiles[x][y + 1].owner ? PROTECTED : MENACED;
+                    tiles[x][y].status |= tiles[x][y + 1].o == MY ? PROTECTED : MENACED;
             }
             if (x > 0 && tiles[x - 1][y].d == E) {
                 if (tiles[x - 1][y].t == HARVESTER)
-                    tiles[x][y].status |= tiles[x - 1][y].owner ? MY_SOURCE : OPP_SOURCE;
+                    tiles[x][y].status |= tiles[x - 1][y].o == MY ? MY_SOURCE : OPP_SOURCE;
                 else if (tiles[x - 1][y].t == TENTACLE)
-                    tiles[x][y].status |= tiles[x - 1][y].owner ? PROTECTED : MENACED;
+                    tiles[x][y].status |= tiles[x - 1][y].o == MY ? PROTECTED : MENACED;
             }
             if (y > 0 && tiles[x][y - 1].d == S) {
                 if (tiles[x][y - 1].t == HARVESTER)
-                    tiles[x][y].status |= tiles[x][y - 1].owner ? MY_SOURCE : OPP_SOURCE;
+                    tiles[x][y].status |= tiles[x][y - 1].o == MY ? MY_SOURCE : OPP_SOURCE;
                 else if (tiles[x][y - 1].t == TENTACLE)
-                    tiles[x][y].status |= tiles[x][y - 1].owner ? PROTECTED : MENACED;
+                    tiles[x][y].status |= tiles[x][y - 1].o == MY ? PROTECTED : MENACED;
             }
             if (x < width - 1 && tiles[x + 1][y].d == W) {
                 if (tiles[x + 1][y].t == HARVESTER)
-                    tiles[x][y].status |= tiles[x + 1][y].owner ? MY_SOURCE : OPP_SOURCE;
+                    tiles[x][y].status |= tiles[x + 1][y].o == MY ? MY_SOURCE : OPP_SOURCE;
                 else if (tiles[x + 1][y].t == TENTACLE)
-                    tiles[x][y].status |= tiles[x + 1][y].owner ? PROTECTED : MENACED;
+                    tiles[x][y].status |= tiles[x + 1][y].o == MY ? PROTECTED : MENACED;
             }
             if (!source && t != EMPTY)
                 tiles[x][y].status |= OCCUPIED;
@@ -337,7 +354,7 @@ void Floyd_Warshall(int *distances, struct entity **previous, struct entity tile
                 if (!(tiles[x][y].status & OCCUPIED && tiles[x][y + 1].status & OCCUPIED))
                     DISTANCES(x, y, x, y + 1) =
                             (tiles[x][y + 1].t != TENTACLE || tiles[x][y + 1].d != N) ? 1 :
-                            tiles[x][y + 1].owner ? RESTRICTED :
+                            tiles[x][y + 1].o == MY ? RESTRICTED :
                             FORBIDDEN;
                 PREVIOUS(x, y, x, y + 1) = &tiles[x][y];
             }
@@ -345,7 +362,7 @@ void Floyd_Warshall(int *distances, struct entity **previous, struct entity tile
                 if (!(tiles[x][y].status & OCCUPIED && tiles[x - 1][y].status & OCCUPIED))
                     DISTANCES(x, y, x - 1, y) =
                             (tiles[x - 1][y].t != TENTACLE || tiles[x - 1][y].d != E) ? 1 :
-                            tiles[x - 1][y].owner ? RESTRICTED :
+                            tiles[x - 1][y].o == MY ? RESTRICTED :
                             FORBIDDEN;
                 PREVIOUS(x, y, x - 1, y) = &tiles[x][y];
             }
@@ -353,7 +370,7 @@ void Floyd_Warshall(int *distances, struct entity **previous, struct entity tile
                 if (!(tiles[x][y].status & OCCUPIED && tiles[x][y - 1].status & OCCUPIED))
                     DISTANCES(x, y, x, y - 1) =
                             (tiles[x][y - 1].t != TENTACLE || tiles[x][y - 1].d != S) ? 1 :
-                            tiles[x][y - 1].owner ? RESTRICTED :
+                            tiles[x][y - 1].o == MY ? RESTRICTED :
                             FORBIDDEN;
                 PREVIOUS(x, y, x, y - 1) = &tiles[x][y];
             }
@@ -361,7 +378,7 @@ void Floyd_Warshall(int *distances, struct entity **previous, struct entity tile
                 if (!(tiles[x][y].status & OCCUPIED && tiles[x + 1][y].status & OCCUPIED))
                     DISTANCES(x, y, x + 1, y) =
                             (tiles[x + 1][y].t != TENTACLE || tiles[x + 1][y].d != W) ? 1 :
-                            tiles[x + 1][y].owner ? RESTRICTED :
+                            tiles[x + 1][y].o == MY ? RESTRICTED :
                             FORBIDDEN;
                 PREVIOUS(x, y, x + 1, y) = &tiles[x][y];
             }
@@ -418,8 +435,7 @@ int main()
     struct entity (*tiles)[height] = malloc(NT * sizeof(struct entity));
     int my_proteins[4];
     int opp_proteins[4];
-    int my_sources[4];
-    int opp_sources[4];
+    int sources[3][4];
     int *distances = malloc(NT * NT * sizeof(int));
     struct entity **previous = malloc(NT * NT * sizeof(struct entity *));
 
@@ -432,8 +448,7 @@ int main()
     for (int loop = 0; ; loop++) {
         init_grid(tiles);
         struct hash_map *organs = create_hash_map(NT + 1);
-        memset(my_sources, 0, 4 * sizeof(int));
-        memset(opp_sources, 0, 4 * sizeof(int));
+        memset(sources, 0, 12 * sizeof(int));
 
         int entity_count;
         scanf("%d", &entity_count);
@@ -444,9 +459,12 @@ int main()
             char type[33];
             scanf("%s", type);
             entity->t = (enum type)determine_enum(type_str, type);
-            scanf("%d%d", &entity->owner, &entity->organ_id);
+            int owner;
+            scanf("%d", &owner);
+            entity->o = owner == 1 ? MY : owner == 0 ? OPP : FREE;
+            scanf("%d", &entity->organ_id);
             if (!loop && entity->t == ROOT) {
-                if (entity->owner)
+                if (entity->o == MY)
                     my_root = entity;
                 else
                     opp_root = entity;
@@ -479,10 +497,10 @@ int main()
                 int value = t == BASIC ? 1 : t == HARVESTER || t == TENTACLE
                         || t == SPORER ? 2 : t == ROOT ? 3 : 0;
 
-                if (tiles[x][y].status & MY_SOURCE)
-                    my_sources[t]++;
-                else if (tiles[x][y].status & OPP_SOURCE)
-                    opp_sources[t]++;
+                if (t == A || t == B || t == C || t ==D)
+                    sources[tiles[x][y].status & MY_SOURCE ? MY :
+                            tiles[x][y].status & OPP_SOURCE ? OPP :
+                            FREE][t]++;
                 else if (value) {
                     struct entity *entity = get_map(organs, tiles[x][y].organ_id);
                     while (entity->organ_parent_id) {
@@ -500,7 +518,7 @@ int main()
                 tiles[x][y].closest_organ = NULL;
                 for (int x1 = 0; x1 < width; x1++)
                     for (int y1 = 0; y1 < height; y1++) {
-                        if (tiles[x1][y1].owner != 1)
+                        if (tiles[x1][y1].o != MY)
                             continue;
                         int d = DISTANCES(x, y, x1, y1);
                         if (d < tiles[x][y].distance_to_organism) {
@@ -519,8 +537,8 @@ escape:         ;
                 struct entity *e = &tiles[x][y];
                 if (e->t == WALL || e->t == EMPTY)
                     continue;
-                fprintf(stderr, "(%d, %d) %s %s owner:%d id:%d parent_id:%d root_id:%d status:%d value:%d dist_to_%d:%d\n",
-                        x, y, type_str[e->t], dir_str[e->d], e->owner, e->organ_id, e->organ_parent_id,
+                fprintf(stderr, "(%d, %d) %s %s owner:%s id:%d parent_id:%d root_id:%d status:%d value:%d dist_to_%d:%d\n",
+                        x, y, type_str[e->t], dir_str[e->d], owner_str[e->o], e->organ_id, e->organ_parent_id,
                         e->organ_root_id, e->status, e->value, e->closest_organ ? e->closest_organ->organ_id : 0,
                         e->closest_organ ? e->distance_to_organism : FORBIDDEN);
             }
@@ -534,7 +552,7 @@ escape:         ;
         for (int x = 0; x < width; x++)
             for (int y = 0; y < height; y++) {
                 struct entity *e = &tiles[x][y];
-                if (!e->owner) {
+                if (e->o == OPP) {
                     if (e->distance_to_organism == 2)
                         add_front_list(vulnerable_organs, e);
                     if (e->distance_to_organism < FORBIDDEN)
