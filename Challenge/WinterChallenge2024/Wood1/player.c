@@ -95,6 +95,10 @@ size_t determine_enum(char *options[], char *selection)
 // menaced by opponent tentacles
 #define MENACED       040
 
+struct vertex {
+    struct entity *e;
+};
+
 struct entity {
     int x;
     // grid coordinate
@@ -105,14 +109,22 @@ struct entity {
     enum ownership o;
     // id of this entity if it's an organ, 0 otherwise
     int organ_id;
-    // N,E,S,W or X if not an organ
+    // N, E, S, W or X if not an organ
     enum dir d;
     int organ_parent_id;
     int organ_root_id;
     int status;
     int value;
+    // N, E, S, W for lateral ending vertices in OCCUPIED tiles only;
+    // X for a central connecting vertex on an UNOCCUPIED tile
+    struct vertex v[5];
     int distance_to_organism;
     struct entity *closest_organ;
+};
+
+struct vertices {
+    int size;
+    struct vertex *array[];
 };
 
 // linked list & hash map functions --------------------------------------------------------------
@@ -273,9 +285,15 @@ void init_grid(struct entity tiles[width][height])
 
     for (int x = 0; x < width; x++)
         for (int y = 0; y < height; y++) {
-            tiles[x][y] = empty;
-            tiles[x][y].x = x;
-            tiles[x][y].y = y;
+            struct entity *e = &tiles[x][y];
+            *e = empty;
+            e->x = x;
+            e->y = y;
+            e->v[N].e = e;
+            e->v[E].e = e;
+            e->v[S].e = e;
+            e->v[W].e = e;
+            e->v[X].e = e;
         }
 }
 
@@ -433,6 +451,7 @@ int main()
 
     // memmory allocation
     struct entity (*tiles)[height] = malloc(NT * sizeof(struct entity));
+    struct vertices *vertices = malloc(sizeof(struct vertices) + 4 * NT * sizeof(struct vertex *));
     int my_proteins[4];
     int opp_proteins[4];
     int sources[3][4];
@@ -447,6 +466,7 @@ int main()
     // game loop
     for (int loop = 0; ; loop++) {
         init_grid(tiles);
+        vertices->size = 0;
         struct hash_map *organs = create_hash_map(NT + 1);
         memset(sources, 0, 12 * sizeof(int));
 
