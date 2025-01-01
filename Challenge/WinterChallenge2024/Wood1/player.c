@@ -85,15 +85,15 @@ size_t determine_enum(char *options[], char *selection)
 
 // status flags for the tiles
 // if A, B, C, D, or EMPTY then 0, 1 otherwise
-#define OCCUPIED   001
-// my protein source
-#define MY_SOURCE  002
-// opponent protein source
-#define OPP_SOURCE 004
+#define OCCUPIED      001
+// faced by a harvester of mine
+#define MY_HARVESTED  002
+// faced by an opponent´s harvester
+#define OPP_HARVESTED 004
 // protected by my tentacles
-#define PROTECTED  010
+#define PROTECTED     010
 // menaced by opponent tentacles
-#define MENACED    040
+#define MENACED       040
 
 struct entity {
     int x;
@@ -288,25 +288,25 @@ void determine_status(struct entity tiles[width][height])
 
             if (y < height - 1 && tiles[x][y + 1].d == N) {
                 if (tiles[x][y + 1].t == HARVESTER)
-                    tiles[x][y].status |= tiles[x][y + 1].o == MY ? MY_SOURCE : OPP_SOURCE;
+                    tiles[x][y].status |= tiles[x][y + 1].o == MY ? MY_HARVESTED : OPP_HARVESTED;
                 else if (tiles[x][y + 1].t == TENTACLE)
                     tiles[x][y].status |= tiles[x][y + 1].o == MY ? PROTECTED : MENACED;
             }
             if (x > 0 && tiles[x - 1][y].d == E) {
                 if (tiles[x - 1][y].t == HARVESTER)
-                    tiles[x][y].status |= tiles[x - 1][y].o == MY ? MY_SOURCE : OPP_SOURCE;
+                    tiles[x][y].status |= tiles[x - 1][y].o == MY ? MY_HARVESTED : OPP_HARVESTED;
                 else if (tiles[x - 1][y].t == TENTACLE)
                     tiles[x][y].status |= tiles[x - 1][y].o == MY ? PROTECTED : MENACED;
             }
             if (y > 0 && tiles[x][y - 1].d == S) {
                 if (tiles[x][y - 1].t == HARVESTER)
-                    tiles[x][y].status |= tiles[x][y - 1].o == MY ? MY_SOURCE : OPP_SOURCE;
+                    tiles[x][y].status |= tiles[x][y - 1].o == MY ? MY_HARVESTED : OPP_HARVESTED;
                 else if (tiles[x][y - 1].t == TENTACLE)
                     tiles[x][y].status |= tiles[x][y - 1].o == MY ? PROTECTED : MENACED;
             }
             if (x < width - 1 && tiles[x + 1][y].d == W) {
                 if (tiles[x + 1][y].t == HARVESTER)
-                    tiles[x][y].status |= tiles[x + 1][y].o == MY ? MY_SOURCE : OPP_SOURCE;
+                    tiles[x][y].status |= tiles[x + 1][y].o == MY ? MY_HARVESTED : OPP_HARVESTED;
                 else if (tiles[x + 1][y].t == TENTACLE)
                     tiles[x][y].status |= tiles[x + 1][y].o == MY ? PROTECTED : MENACED;
             }
@@ -497,9 +497,9 @@ int main()
                 int value = t == BASIC ? 1 : t == HARVESTER || t == TENTACLE
                         || t == SPORER ? 2 : t == ROOT ? 3 : 0;
 
-                if (t == A || t == B || t == C || t ==D)
-                    sources[tiles[x][y].status & MY_SOURCE ? MY :
-                            tiles[x][y].status & OPP_SOURCE ? OPP :
+                if (t == A || t == B || t == C || t == D)
+                    sources[tiles[x][y].status & MY_HARVESTED ? MY :
+                            tiles[x][y].status & OPP_HARVESTED ? OPP :
                             FREE][t]++;
                 else if (value) {
                     struct entity *entity = get_map(organs, tiles[x][y].organ_id);
