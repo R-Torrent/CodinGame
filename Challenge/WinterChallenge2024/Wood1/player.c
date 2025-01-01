@@ -93,7 +93,7 @@ size_t determine_enum(char *options[], char *selection)
 // protected by my tentacles
 #define PROTECTED     010
 // menaced by opponent tentacles
-#define MENACED       040
+#define MENACED       020
 
 struct vertex {
     struct entity *e;
@@ -228,7 +228,7 @@ int hash(int key, int size)
 
 void put_map(struct hash_map *map, int key, void *content)
 {
-    if (map) {;
+    if (map) {
         struct node *new = malloc(sizeof(struct node));
         int index = hash(key, map->size);
 
@@ -272,21 +272,10 @@ int NT;
 
 void init_grid(struct entity tiles[width][height])
 {
-    const struct entity empty = {
-        .t = EMPTY,
-        .o = FREE,
-        .organ_id = 0,
-        .d = X,
-        .organ_parent_id = 0,
-        .organ_root_id = 0,
-        .status = 0,
-        .value = 0
-    };
-
     for (int x = 0; x < width; x++)
         for (int y = 0; y < height; y++) {
             struct entity *e = &tiles[x][y];
-            *e = empty;
+
             e->x = x;
             e->y = y;
             e->v[N].e = e;
@@ -294,6 +283,23 @@ void init_grid(struct entity tiles[width][height])
             e->v[S].e = e;
             e->v[W].e = e;
             e->v[X].e = e;
+        }
+}
+
+void reset_grid(struct entity tiles[width][height])
+{
+    for (int x = 0; x < width; x++)
+        for (int y = 0; y < height; y++) {
+            struct entity *e = &tiles[x][y];
+
+            e->t = EMPTY;
+            e->o = FREE;
+            e->organ_id = 0;
+            e->d = X;
+            e->organ_parent_id = 0;
+            e->organ_root_id = 0;
+            e->status = 0;
+            e->value = 0;
         }
 }
 
@@ -333,12 +339,42 @@ void determine_status(struct entity tiles[width][height])
         }
 }
 
+void determine_values_N_proteins(struct entity tiles[width][height],
+        struct hash_map *organs, int sources[3][4])
+{
+    for (int x = 0; x < width; x++)
+        for (int y = 0; y < height; y++) {
+            int t = tiles[x][y].t;
+            int value = t == BASIC ? 1 : t == HARVESTER || t == TENTACLE
+                    || t == SPORER ? 2 : t == ROOT ? 3 : 0;
+
+            if (t == A || t == B || t == C || t == D) {
+                if (tiles[x][y].status & MY_HARVESTED)
+                    sources[MY][t]++;
+                if (tiles[x][y].status & OPP_HARVESTED)
+                    sources[MY][t]++;
+                if (!(tiles[x][y].status & (MY_HARVESTED | OPP_HARVESTED)))
+                    sources[FREE][t]++;
+            }
+            else if (value) {
+                struct entity *entity = get_map(organs, tiles[x][y].organ_id);
+
+                while (entity->organ_parent_id) {
+                    entity->value += value;
+                    entity = get_map(organs, entity->organ_parent_id);
+                };
+                entity->value += value;
+            }
+        }
+}
+
 int compare_highest_value(void *data, struct entity *e0, struct entity *e1)
 {
     (void)data;
     return e1->value - e0->value;
 }
 
+// "taxicab" geometry
 int compare_closest_from_myroot(void *data, struct entity *e0, struct entity *e1)
 {
     struct entity *my_root = (struct entity *)data;
@@ -442,6 +478,22 @@ enum dir face_to(struct entity *subject, struct entity *object)
     return X;
 }
 
+// used ofr error debugging
+void print_entities(struct entity tiles[width][height])
+{
+    for (int x = 0; x < width; x++)
+        for (int y = 0; y < height; y++) {
+            struct entity *e = &tiles[x][y];
+
+            if (e->t == WALL || e->t == EMPTY)
+                continue;
+            fprintf(stderr, "(%d, %d) %s %s owner:%s id:%d parent_id:%d root_id:%d status:%d value:%d dist_to_%d:%d\n",
+                    x, y, type_str[e->t], dir_str[e->d], owner_str[e->o], e->organ_id, e->organ_parent_id,
+                    e->organ_root_id, e->status, e->value, e->closest_organ ? e->closest_organ->organ_id : 0,
+                    e->closest_organ ? e->distance_to_organism : FORBIDDEN);
+        }
+}
+
 // main porgram  ------------------------------------------------------------------------------
 
 int main()
@@ -463,9 +515,11 @@ int main()
     struct entity *opp_root;
     struct entity *target;
 
+    init_grid(tiles);
+
     // game loop
     for (int loop = 0; ; loop++) {
-        init_grid(tiles);
+        reset_grid(tiles);
         vertices->size = 0;
         struct hash_map *organs = create_hash_map(NT + 1);
         memset(sources, 0, 12 * sizeof(int));
@@ -511,25 +565,7 @@ int main()
 
         // calcultate entity values and active protein sources
         // value = its own + that of all its descendants
-        for (int x = 0; x < width; x++)
-            for (int y = 0; y < height; y++) {
-                int t = tiles[x][y].t;
-                int value = t == BASIC ? 1 : t == HARVESTER || t == TENTACLE
-                        || t == SPORER ? 2 : t == ROOT ? 3 : 0;
-
-                if (t == A || t == B || t == C || t == D)
-                    sources[tiles[x][y].status & MY_HARVESTED ? MY :
-                            tiles[x][y].status & OPP_HARVESTED ? OPP :
-                            FREE][t]++;
-                else if (value) {
-                    struct entity *entity = get_map(organs, tiles[x][y].organ_id);
-                    while (entity->organ_parent_id) {
-                        entity->value += value;
-                        entity = get_map(organs, entity->organ_parent_id);
-                    };
-                    entity->value += value;
-                }
-            }
+        determine_values_N_proteins(tiles, organs, sources);
 
         // calculate closest point to my_organism
         for (int x = 0; x < width; x++)
@@ -552,16 +588,8 @@ escape:         ;
             }
 
         // quality control -- print-out of the remarkable entities
-        for (int x = 0; x < width; x++)
-            for (int y = 0; y < height; y++) {
-                struct entity *e = &tiles[x][y];
-                if (e->t == WALL || e->t == EMPTY)
-                    continue;
-                fprintf(stderr, "(%d, %d) %s %s owner:%s id:%d parent_id:%d root_id:%d status:%d value:%d dist_to_%d:%d\n",
-                        x, y, type_str[e->t], dir_str[e->d], owner_str[e->o], e->organ_id, e->organ_parent_id,
-                        e->organ_root_id, e->status, e->value, e->closest_organ ? e->closest_organ->organ_id : 0,
-                        e->closest_organ ? e->distance_to_organism : FORBIDDEN);
-            }
+        print_entities(tiles);
+
         if (target)
                 fprintf(stderr, "Previous target (%d, %d)\n", target->x, target->y);
 
