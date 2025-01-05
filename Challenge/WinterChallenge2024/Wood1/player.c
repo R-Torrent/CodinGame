@@ -224,7 +224,7 @@ int hash(int key, int size)
 
 void put_map(struct hash_map *map, int key, void *content)
 {
-    if (map) {;
+    if (map) {
         struct node *new = malloc(sizeof(struct node));
         int index = hash(key, map->size);
 
@@ -349,8 +349,8 @@ void assess_tiles(struct entity tiles[width][height],
                 if (tiles[x][y].status & MY_HARVESTED)
                     sources[MY][t]++;
                 if (tiles[x][y].status & OPP_HARVESTED)
-                    sources[MY][t]++;
-                if (!(tiles[x][y].status &(MY_HARVESTED | OPP_HARVESTED)))
+                    sources[OPP][t]++;
+                if (!(tiles[x][y].status & (MY_HARVESTED | OPP_HARVESTED)))
                     sources[FREE][t]++;
             }
             // determine organ value
