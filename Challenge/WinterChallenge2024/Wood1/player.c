@@ -96,6 +96,7 @@ size_t determine_enum(char *options[], char *selection)
 #define MENACED       020
 
 struct vertex {
+    int k;
     struct entity *e;
 };
 
@@ -120,11 +121,6 @@ struct entity {
     struct vertex v[5];
     int distance_to_organism;
     struct entity *closest_organ;
-};
-
-struct vertices {
-    int size;
-    struct vertex *array[];
 };
 
 // linked list & hash map functions --------------------------------------------------------------
@@ -228,7 +224,7 @@ int hash(int key, int size)
 
 void put_map(struct hash_map *map, int key, void *content)
 {
-    if (map) {
+    if (map) {;
         struct node *new = malloc(sizeof(struct node));
         int index = hash(key, map->size);
 
@@ -339,7 +335,7 @@ void determine_status(struct entity tiles[width][height])
         }
 }
 
-void determine_values_N_proteins(struct entity tiles[width][height],
+void assess_tiles(struct entity tiles[width][height],
         struct hash_map *organs, int sources[3][4])
 {
     for (int x = 0; x < width; x++)
@@ -348,14 +344,17 @@ void determine_values_N_proteins(struct entity tiles[width][height],
             int value = t == BASIC ? 1 : t == HARVESTER || t == TENTACLE
                     || t == SPORER ? 2 : t == ROOT ? 3 : 0;
 
+            // determine protein sources
             if (t == A || t == B || t == C || t == D) {
                 if (tiles[x][y].status & MY_HARVESTED)
                     sources[MY][t]++;
                 if (tiles[x][y].status & OPP_HARVESTED)
                     sources[MY][t]++;
-                if (!(tiles[x][y].status & (MY_HARVESTED | OPP_HARVESTED)))
+                if (!(tiles[x][y].status &(MY_HARVESTED | OPP_HARVESTED)))
                     sources[FREE][t]++;
             }
+            // determine organ value
+            // value = its own + that of all its descendants
             else if (value) {
                 struct entity *entity = get_map(organs, tiles[x][y].organ_id);
 
@@ -368,13 +367,53 @@ void determine_values_N_proteins(struct entity tiles[width][height],
         }
 }
 
+struct array_v {
+    int size;
+    struct vertex *array[];
+};
+
+struct array_v *generate_vertices(struct entity tiles[width][height])
+{
+    struct list *temp = create_list();
+
+    for (int x = 0; x < width; x++)
+        for (int y = 0; y < height; y++) {
+            struct entity *e = &tiles[x][y];
+
+            if (e->status & OCCUPIED) {
+                if (y > 0)
+                    add_front_list(temp, &e->v[N]);
+                if (x < width - 1)
+                    add_front_list(temp, &e->v[E]);
+                if (y < height - 1)
+                    add_front_list(temp, &e->v[S]);
+                if (x > 0)
+                    add_front_list(temp, &e->v[W]);
+            }
+            else
+                add_front_list(temp, &e->v[X]);
+        }
+
+    struct array_v *array = malloc(sizeof(struct array_v)
+            + temp->size * sizeof(struct vertex *));
+
+    array->size = temp->size;
+    struct vertex **p = array->array;
+    for (struct node *node = temp->node; node; node = node->next) {
+        ((struct vertex *)node->content)->k = p - array->array;
+        *p++ = node->content;
+    }
+    clear_list(temp);
+
+    return array;
+}
+
 int compare_highest_value(void *data, struct entity *e0, struct entity *e1)
 {
     (void)data;
     return e1->value - e0->value;
 }
 
-// "taxicab" geometry
 int compare_closest_from_myroot(void *data, struct entity *e0, struct entity *e1)
 {
     struct entity *my_root = (struct entity *)data;
@@ -478,7 +517,7 @@ enum dir face_to(struct entity *subject, struct entity *object)
     return X;
 }
 
-// used ofr error debugging
+// used for error debugging
 void print_entities(struct entity tiles[width][height])
 {
     for (int x = 0; x < width; x++)
@@ -494,7 +533,7 @@ void print_entities(struct entity tiles[width][height])
         }
 }
 
-// main porgram  ------------------------------------------------------------------------------
+// main program  ------------------------------------------------------------------------------
 
 int main()
 {
@@ -503,7 +542,6 @@ int main()
 
     // memmory allocation
     struct entity (*tiles)[height] = malloc(NT * sizeof(struct entity));
-    struct vertices *vertices = malloc(sizeof(struct vertices) + 4 * NT * sizeof(struct vertex *));
     int my_proteins[4];
     int opp_proteins[4];
     int sources[3][4];
@@ -520,7 +558,6 @@ int main()
     // game loop
     for (int loop = 0; ; loop++) {
         reset_grid(tiles);
-        vertices->size = 0;
         struct hash_map *organs = create_hash_map(NT + 1);
         memset(sources, 0, 12 * sizeof(int));
 
@@ -560,12 +597,14 @@ int main()
         // determine status for each tile
         determine_status(tiles);
 
+        // calcultate entity values and active protein sources
+        assess_tiles(tiles, organs, sources);
+
+        // establish vertex-entity relationships
+        struct array_v *vertices = generate_vertices(tiles);
+
         // shortest path calculator
         Floyd_Warshall(distances, previous, tiles);
-
-        // calcultate entity values and active protein sources
-        // value = its own + that of all its descendants
-        determine_values_N_proteins(tiles, organs, sources);
 
         // calculate closest point to my_organism
         for (int x = 0; x < width; x++)
@@ -658,6 +697,8 @@ escape:         ;
         clear_list(vacant_slots);
         clear_list(path);
         clear_map(organs);
+        free(vertices);
+
         for (int i = 0; i < required_actions_count; i++) {
 
             // Write an action using printf(). DON'T FORGET THE TRAILING \n
