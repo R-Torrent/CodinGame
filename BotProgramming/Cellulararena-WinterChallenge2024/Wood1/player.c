@@ -15,6 +15,9 @@
  * Wood 1 League
  */
 
+// comment-out the macro when the program is ready
+#define DEBUG
+
 #define TYPE    \
 X(A)            \
 X(B)            \
@@ -96,8 +99,12 @@ size_t determine_enum(char *options[], char *selection)
 #define MENACED       020
 
 struct vertex {
-    int k;
+    // orientation of the vertex
+    enum dir d;
+    // tile where this vertex lies
     struct entity *e;
+    // adjacent vertices
+    struct vertex *a[4];
 };
 
 struct entity {
@@ -147,6 +154,7 @@ struct list *create_list(void)
 
     list->size = 0;
     list->node = NULL;
+
     return list;
 }
 
@@ -225,6 +233,7 @@ struct hash_map *create_hash_map(int size)
     map->array = malloc(size * sizeof(struct node *));
     for (int i = 0; i < size; i++)
         map->array[i] = NULL;
+
     return map;
 }
 
@@ -253,6 +262,7 @@ void *get_map(struct hash_map *map, int key)
                 node; node = node->next)
             if (node->key == key)
                 return node->content;
+
     return NULL;
 }
 
@@ -285,6 +295,11 @@ void init_grid(struct entity tiles[width][height])
 
             e->x = x;
             e->y = y;
+            e->v[N].d = N;
+            e->v[E].d = E;
+            e->v[S].d = S;
+            e->v[W].d = W;
+            e->v[X].d = X;
             e->v[N].e = e;
             e->v[E].e = e;
             e->v[S].e = e;
@@ -307,6 +322,8 @@ void reset_grid(struct entity tiles[width][height])
             e->organ_root_id = 0;
             e->status = 0;
             e->value = 0;
+            e->distance_to_organism = 0;
+            e->closest_organ = NULL;
         }
 }
 
@@ -352,6 +369,7 @@ void assess_tiles(struct entity tiles[width][height],
     for (int x = 0; x < width; x++)
         for (int y = 0; y < height; y++) {
             int t = tiles[x][y].t;
+            // single-tile value = # of resorces required to build
             int value = t == BASIC ? 1 : t == HARVESTER || t == TENTACLE
                     || t == SPORER ? 2 : t == ROOT ? 3 : 0;
 
@@ -383,8 +401,8 @@ struct array_v {
     struct vertex *array[];
 };
 
-// note that these are not all the vertices of the grid; only those that might
-// be part of a NEW unbroken path set from one of my organs to some target
+// note that these are not all the vertices of the grid; only those that might be
+// part of a NEW clear and unbroken path set from one of my organs to some target
 struct array_v *generate_vertices(struct entity tiles[width][height])
 {
     struct list *temp = create_list();
@@ -392,21 +410,52 @@ struct array_v *generate_vertices(struct entity tiles[width][height])
     for (int x = 0; x < width; x++)
         for (int y = 0; y < height; y++) {
             struct entity *e = &tiles[x][y];
+            struct vertex *v;
 
             if (e->t == WALL)
                 continue;
             if (e->status & OCCUPIED) {
-                if (y > 0 && !(tiles[x][y - 1].status & OCCUPIED))
-                    add_front_list(temp, &e->v[N]);
-                if (x < width - 1 && !(tiles[x + 1][y].status & OCCUPIED))
-                    add_front_list(temp, &e->v[E]);
-                if (y < height - 1 && !(tiles[x][y + 1].status & OCCUPIED))
-                    add_front_list(temp, &e->v[S]);
-                if (x > 0 && !(tiles[x - 1][y].status & OCCUPIED))
-                    add_front_list(temp, &e->v[W]);
+                if (y > 0 && !(tiles[x][y - 1].status & OCCUPIED)) {
+                    v = &e->v[N];
+                    v->a[0] = &tiles[x][y - 1].v[X];
+                    v->a[1] = v->a[2] = v->a[3] = NULL;
+                    add_front_list(temp, v);
+                }
+                if (x < width - 1 && !(tiles[x + 1][y].status & OCCUPIED)) {
+                    v = &e->v[E];
+                    v->a[0] = &tiles[x + 1][y].v[X];
+                    v->a[1] = v->a[2] = v->a[3] = NULL;
+                    add_front_list(temp, v);
+                }
+                if (y < height - 1 && !(tiles[x][y + 1].status & OCCUPIED)) {
+                    v = &e->v[S];
+                    v->a[0] = &tiles[x][y + 1].v[X];
+                    v->a[1] = v->a[2] = v->a[3] = NULL;
+                    add_front_list(temp, v);
+                }
+                if (x > 0 && !(tiles[x - 1][y].status & OCCUPIED)) {
+                    v = &e->v[W];
+                    v->a[0] = &tiles[x - 1][y].v[X];
+                    v->a[1] = v->a[2] = v->a[3] = NULL;
+                    add_front_list(temp, v);
+                }
             }
-            else
-                add_front_list(temp, &e->v[X]);
+            else {
+                v = &e->v[X];
+                v->a[0] = y == 0 ? NULL :
+                        tiles[x][y - 1].status & OCCUPIED ? &tiles[x][y - 1].v[S] :
+                        &tiles[x][y - 1].v[X];
+                v->a[1] = x == width - 1 ? NULL :
+                        tiles[x + 1][y].status & OCCUPIED ? &tiles[x + 1][y].v[W] :
+                        &tiles[x + 1][y].v[X];
+                v->a[2] = y == height - 1 ? NULL :
+                        tiles[x][y + 1].status & OCCUPIED ? &tiles[x][y + 1].v[N] :
+                        &tiles[x][y + 1].v[X];
+                v->a[3] = x == 0 ? NULL :
+                        tiles[x - 1][y].status & OCCUPIED ? &tiles[x - 1][y].v[E] :
+                        &tiles[x - 1][y].v[X];
+                add_front_list(temp, v);
+            }
         }
 
     struct array_v *array = malloc(sizeof(struct array_v)
@@ -414,10 +463,8 @@ struct array_v *generate_vertices(struct entity tiles[width][height])
 
     array->size = temp->size;
     struct vertex **p = array->array;
-    for (struct node *node = temp->node; node; node = node->next) {
-        ((struct vertex *)node->content)->k = p - array->array;
+    for (struct node *node = temp->node; node; node = node->next)
         *p++ = node->content;
-    }
     clear_list(temp);
 
     return array;
@@ -431,6 +478,15 @@ struct array_v *generate_vertices(struct entity tiles[width][height])
 #define DISTANCES(x1, y1, x2, y2) distances[EXPAND2(x1, y1, x2, y2)]
 #define PREVIOUS(x1, y1, x2, y2) previous[EXPAND2(x1, y1, x2, y2)]
 
+int adjacent_vertices(struct vertex *v1, struct vertex *v2)
+{
+    for (struct vertex **pa = v1->a; pa - v1->a < 4; pa++)
+        if (*pa && *pa == v2)
+            return 1;
+
+    return 0;
+}
+
 // [https://en.wikipedia.org/wiki/Floyd%E2%80%93Warshall_algorithm]
 void Floyd_Warshall(struct entity tiles[width][height], struct array_v *vertices,
         int *distances, struct entity **previous)
@@ -440,36 +496,38 @@ void Floyd_Warshall(struct entity tiles[width][height], struct array_v *vertices
     struct vertex *(*previous_v)[NV] = malloc(NV * NV * sizeof(struct vertex *));
 
     // initialization of Floyd-Warshall matrices & restrict areas ahead of a tentacle
-    // (indices range over all vertices)
+    // (matrix indices range over all vertices)
     for (int i = 0; i < NV; i++) {
-        struct vertex *v1 = vertices->array[i];
-        struct entity *e1 = v1->e;
+        struct vertex *vi = vertices->array[i];
+        struct entity *ei = vi->e;
 
         for (int j = 0; j < NV; j++) {
-            struct vertex *v2 = vertices->array[j];
-            struct entity *e2 = v2->e;
+            struct vertex *vj = vertices->array[j];
+            struct entity *ej = vj->e;
 
-            if (abs(e1->x - e2->x) == 1 || abs(e1->y - e2->y) == 1) {
-                if (e1->status & MENACED || e2->status & MENACED)
+            // for each edge
+            if (adjacent_vertices(vi, vj)) {
+                if (ei->status & MENACED || ej->status & MENACED)
                     distances_v[i][j] = FORBIDDEN;
                 else {
                     distances_v[i][j] = 1;
-                    if (e1->status & PROTECTED)
+                    if (ei->status & PROTECTED)
                         distances_v[i][j] += RESTRICTED;
-                    if (e2->status & PROTECTED)
+                    if (ej->status & PROTECTED)
                         distances_v[i][j] += RESTRICTED;
                 }
-                previous_v[i][j] = v1;
+                previous_v[i][j] = vi;
             }
+            // for each vertex
             else {
                 distances_v[i][j] = i == j ? 0 : FORBIDDEN;
-                previous_v[i][j] = i == j ? v1 : NULL;
+                previous_v[i][j] = i == j ? vi : NULL;
             }
         }
     }
 
     // Floyd_Warshall algorithm
-    // (indices range over all vertices)
+    // (matrix indices range over all vertices)
     for (int k = 0; k < NV; k++)
         for (int i = 0; i < NV; i++)
             for (int j = 0; j < NV; j++)
@@ -479,7 +537,7 @@ void Floyd_Warshall(struct entity tiles[width][height], struct array_v *vertices
                 }
 
     // determines best result for all vertices within each tile
-    // (indices range over all tiles)
+    // (matrix indices range over all tiles)
     for (int i = 0; i < NT * NT; i++) {
         distances[i] = FORBIDDEN;
         previous[i] = NULL;
@@ -505,17 +563,17 @@ void Floyd_Warshall(struct entity tiles[width][height], struct array_v *vertices
 struct list *path_FW(struct entity tiles[width][height],
         struct entity **previous, int x1, int y1, int x2, int y2)
 {
-    if (!previous[EXPAND2(x1, y1, x2, y2)])
+    if (!PREVIOUS(x1, y1, x2, y2))
         return NULL;
 
     struct list *path = create_list();
 
     add_front_list(path, &tiles[x2][y2]);
     while (x1 != x2 || y1 != y2) {
-        struct entity *pe = previous[EXPAND2(x1, y1, x2, y2)];
+        struct entity *e = PREVIOUS(x1, y1, x2, y2);
 
-        x2 = pe->x;
-        y2 = pe->y;
+        x2 = e->x;
+        y2 = e->y;
         add_front_list(path, &tiles[x2][y2]);
     }
 
@@ -571,7 +629,7 @@ void print_coords(struct entity *e)
 void print_path(struct list *path)
 {
     iterate_over_list(path, (void (*)(void *))print_coords);
-    fprintf(stderr, "\n");
+    putc('\n', stderr);
 }
 
 // main program  ------------------------------------------------------------------------------
@@ -667,9 +725,10 @@ int main()
 escape:         ;
             }
 
+#ifdef DEBUG
         // quality control -- print-out of the remarkable entities
         print_entities(tiles);
-
+#endif      
         if (target)
                 fprintf(stderr, "Previous target (%d, %d)\n", target->x, target->y);
 
@@ -686,7 +745,7 @@ escape:         ;
                     if (e->distance_to_organism < FORBIDDEN && my_proteins[A])
                         add_front_list(accessible_organs, e);
                 }
-                else if (!(e->status & OCCUPIED) && e->distance_to_organism == 1)
+                else if (!(e->status & OCCUPIED) && e->distance_to_organism == 1 && my_proteins[A])
                     add_front_list(vacant_slots, e);
             }
 
@@ -698,18 +757,20 @@ escape:         ;
         struct entity *my_organ;
         enum type new_organ_type = BASIC;
         enum dir new_organ_dir = N;
-        // primary objective: to establish a tentacle if possible
+        // primary objective: to establish a tentacle if possible on the highest-value target
         if (vulnerable_organs->size) {
             // select the highest-value enemy organ
             target = vulnerable_organs->node->content;
             fprintf(stderr, "Aiming for an enemy organ. Targeting %d (%d, %d)\n",
                     target->organ_id, target->x, target->y);
+            target = path->node->next->content;
             my_organ = target->closest_organ;
             new_organ_type = TENTACLE;
-            path = path_FW(tiles, previous, my_organ->x, my_organ->y, target->x, target->y);
-            print_path(path);
-            target = path->node->next->content;
             new_organ_dir = face_to(target, vulnerable_organs->node->content);
+            path = path_FW(tiles, previous, my_organ->x, my_organ->y, target->x, target->y);
+#ifdef DEBUG
+            print_path(path);
+#endif
         }
         // secondary objective: to grow towards the highest-value enemy organ
         else if (accessible_organs->size) {
@@ -718,16 +779,18 @@ escape:         ;
                     target->organ_id, target->x, target->y);
             my_organ = target->closest_organ;
             path = path_FW(tiles, previous, my_organ->x, my_organ->y, target->x, target->y);
+#ifdef DEBUG
             print_path(path);
+#endif
             target = path->node->next->content;
         }
         // fallback strategy: to grow wherever possible
-        else if (vacant_slots->size && my_proteins[A]) {
+        // choose any empty slot, favoring slots close to my_root
+        else if (vacant_slots->size) {
             target = vacant_slots->node->content;
             my_organ = target->closest_organ;
-            fprintf(stderr, "Strategy: Simply grow where possible\n");
-            // choose any empty slot, favoring slots close from my_root and away from the tentacles
-            fprintf(stderr, "Empty slot to grow into (%d, %d)\n", target->x, target->y);
+            fprintf(stderr, "Strategy: Simply grow where possible. Empty slot to grow into (%d, %d)\n",
+                    target->x, target->y);
         }
         else {
             fprintf(stderr, "Nothing to do!\n");
