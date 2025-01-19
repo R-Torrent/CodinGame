@@ -408,6 +408,119 @@ struct array_v *generate_vertices(struct entity tiles[width][height])
     return array;
 }
 
+#define FORBIDDEN 1000
+#define RESTRICTED 50
+
+#define ASSIGN(v1, v2, e1, e2)                                                  \
+    distances_v[(v1)->k][(v2)->k] =                                             \
+            (e1)->status & MENACED || (e2)->status & MENACED ? FORBIDDEN :      \
+            (e1)->status & PROTECTED || (e2)->status & PROTECTED ? RESTRICTED : \
+            1;                                                                  \
+    previous_v[(v1)->k][(v2)->k] = (v1);
+
+#define EXPAND(a, b, c) (a) * (c) + (b)
+#define EXPAND2(x1, y1, x2, y2) EXPAND(EXPAND((x1), (y1), height), EXPAND((x2), (y2), height), NT)
+#define DISTANCES(x1, y1, x2, y2) distances[EXPAND2(x1, y1, x2, y2)]
+#define PREVIOUS(x1, y1, x2, y2) previous[EXPAND2(x1, y1, x2, y2)]
+
+// [https://en.wikipedia.org/wiki/Floyd%E2%80%93Warshall_algorithm]
+void Floyd_Warshall(struct entity tiles[width][height], struct array_v *vertices,
+        int *distances, struct entity **previous)
+{
+    const int NV = vertices->size;
+    int (*distances_v)[NV] = malloc(NV * NV * sizeof(int));
+    struct vertex *(*previous_v)[NV] = malloc(NV * NV * sizeof(struct vertex *));
+
+    // initialization of Floyd-Warshall matrices & restrict areas ahead of a tentacle
+    // (indices range over all vertices)
+    for (int i = 0; i < NV; i++)
+        for (int j = 0; j < NV; j++) {
+            distances_v[i][j] = i == j ? 0 : FORBIDDEN;
+            previous_v[i][j] = i == j ? vertices->array[i] : NULL;
+        }
+    for (int x = 0; x < width; x++)
+        for (int y = 0; y < height; y++) {
+            struct entity *e1 = &tiles[x][y], *e2;
+            struct vertex *v1, *v2;
+
+            if (y > 0) {
+                e2 = &tiles[x][y - 1];
+                v1 = e1->status & OCCUPIED ? &e1->v[N] : &e1->v[X];
+                v2 = e2->status & OCCUPIED ? &e2->v[S] : &e2->v[X];
+                ASSIGN(v1, v2, e1, e2);
+            }
+            if (x < width - 1) {
+                e2 = &tiles[x + 1][y];
+                v1 = e1->status & OCCUPIED ? &e1->v[E] : &e1->v[X];
+                v2 = e2->status & OCCUPIED ? &e2->v[W] : &e2->v[X];
+                ASSIGN(v1, v2, e1, e2);
+            }
+            if (y < height - 1) {
+                e2 = &tiles[x][y + 1];
+                v1 = e1->status & OCCUPIED ? &e1->v[S] : &e1->v[X];
+                v2 = e2->status & OCCUPIED ? &e2->v[N] : &e2->v[X];
+                ASSIGN(v1, v2, e1, e2);
+            }
+            if (x > 0) {
+                e2 = &tiles[x - 1][y];
+                v1 = e1->status & OCCUPIED ? &e1->v[W] : &e1->v[X];
+                v2 = e2->status & OCCUPIED ? &e2->v[E] : &e2->v[X];
+                ASSIGN(v1, v2, e1, e2);
+            }
+        }
+
+    // Floyd_Warshall algorithm
+    // (indices range over all vertices)
+    for (int k = 0; k < NV; k++)
+        for (int i = 0; i < NV; i++)
+            for (int j = 0; j < NV; j++)
+                if (distances_v[i][j] > distances_v[i][k] + distances_v[k][j]) {
+                    distances_v[i][j] = distances_v[i][k] + distances_v[k][j];
+                    previous_v[i][j] = previous_v[k][j];
+                }
+
+    // determines best result for all vertices within each tile
+    // (indices range over all tiles)
+    for (int i = 0; i < NT * NT; i++) {
+        distances[i] = FORBIDDEN;
+        previous[i] = NULL;
+    }
+    for (int i = 0; i < NV; i++) {
+        int x1 = vertices->array[i]->e->x;
+        int y1 = vertices->array[i]->e->y;
+        for (int j = 0; j < NV; j++) {
+            int x2 = vertices->array[j]->e->x;
+            int y2 = vertices->array[j]->e->y;
+            if (distances_v[i][j] < DISTANCES(x1, y1, x2, y2)) {
+                DISTANCES(x1, y1, x2, y2) = distances_v[i][j];
+                PREVIOUS(x1, y1, x2, y2) = previous_v[i][j]->e;
+            }
+        }
+    }
+
+    free(distances_v);
+    free(previous_v);
+}
+
+// shortest path reconstruction from the Floyd-Warshall alorithm
+struct list *path_FW(struct entity tiles[width][height],
+        struct entity **previous, int x1, int y1, int x2, int y2)
+{
+    if (!previous[EXPAND2(x1, y1, x2, y2)])
+        return NULL;
+
+    struct list *path = create_list();
+    add_front_list(path, &tiles[x2][y2]);
+    while (x1 != x2 || y1 != y2) {
+        struct entity *pe = previous[EXPAND2(x1, y1, x2, y2)];
+        x2 = pe->x;
+        y2 = pe->y;
+        add_front_list(path, &tiles[x2][y2]);
+    }
+
+    return path;
+}
+
 int compare_highest_value(void *data, struct entity *e0, struct entity *e1)
 {
     (void)data;
@@ -420,90 +533,6 @@ int compare_closest_from_myroot(void *data, struct entity *e0, struct entity *e1
 
     return abs(e0->x - my_root->x) + abs(e0->y - my_root->y) -
             (abs(e1->x - my_root->x) + abs(e1->y - my_root->y));
-}
-
-#define FORBIDDEN 1000
-#define RESTRICTED 50
-
-#define EXPAND(a, b, c) (a) * (c) + (b)
-#define EXPAND2(x1, y1, x2, y2) EXPAND(EXPAND((x1), (y1), height), EXPAND((x2), (y2), height), NT)
-#define DISTANCES(x1, y1, x2, y2) distances[EXPAND2(x1, y1, x2, y2)]
-#define PREVIOUS(x1, y1, x2, y2) previous[EXPAND2(x1, y1, x2, y2)]
-
-void Floyd_Warshall(int *distances, struct entity **previous, struct entity tiles[width][height])
-{
-    int *p, d, i1, k1;
-
-    // initialization & restrict areas ahead of a tentacle
-    for (int i = 0; i < NT; i++)
-        for (int j = 0; j < NT; j++) {
-            int k = EXPAND(i, j, NT);
-            distances[k] = i == j ? 0 : FORBIDDEN;
-            previous[k] = i == j ? (struct entity *)tiles + i : NULL;
-        }
-    for (int x = 0; x < width; x++)
-        for (int y = 0; y < height; y++) {
-            if (y < height - 1) {
-                if (!(tiles[x][y].status & OCCUPIED && tiles[x][y + 1].status & OCCUPIED))
-                    DISTANCES(x, y, x, y + 1) =
-                            (tiles[x][y + 1].t != TENTACLE || tiles[x][y + 1].d != N) ? 1 :
-                            tiles[x][y + 1].o == MY ? RESTRICTED :
-                            FORBIDDEN;
-                PREVIOUS(x, y, x, y + 1) = &tiles[x][y];
-            }
-            if (x > 0) {
-                if (!(tiles[x][y].status & OCCUPIED && tiles[x - 1][y].status & OCCUPIED))
-                    DISTANCES(x, y, x - 1, y) =
-                            (tiles[x - 1][y].t != TENTACLE || tiles[x - 1][y].d != E) ? 1 :
-                            tiles[x - 1][y].o == MY ? RESTRICTED :
-                            FORBIDDEN;
-                PREVIOUS(x, y, x - 1, y) = &tiles[x][y];
-            }
-            if (y > 0) {
-                if (!(tiles[x][y].status & OCCUPIED && tiles[x][y - 1].status & OCCUPIED))
-                    DISTANCES(x, y, x, y - 1) =
-                            (tiles[x][y - 1].t != TENTACLE || tiles[x][y - 1].d != S) ? 1 :
-                            tiles[x][y - 1].o == MY ? RESTRICTED :
-                            FORBIDDEN;
-                PREVIOUS(x, y, x, y - 1) = &tiles[x][y];
-            }
-            if (x < width - 1) {
-                if (!(tiles[x][y].status & OCCUPIED && tiles[x + 1][y].status & OCCUPIED))
-                    DISTANCES(x, y, x + 1, y) =
-                            (tiles[x + 1][y].t != TENTACLE || tiles[x + 1][y].d != W) ? 1 :
-                            tiles[x + 1][y].o == MY ? RESTRICTED :
-                            FORBIDDEN;
-                PREVIOUS(x, y, x + 1, y) = &tiles[x][y];
-            }
-        }
-
-    // algorithm
-    for (int k = 0; k < NT; k++)
-        for (int i = 0; i < NT; i++)
-            for (int j = 0; j < NT; j++)
-                if (*(p = distances + (i1 = EXPAND(i, j, NT))) >
-                        (d = distances[EXPAND(i, k, NT)] + distances[(k1 = EXPAND(k, j, NT))])) {
-                    *p = d;
-                    previous[i1] = previous[k1];
-                }
-}
-
-// shortest path reconstruction from the Floyd-Warshall alorithm
-struct list *path_FW(struct entity tiles[width][height],
-        struct entity **previous, int x1, int y1, int x2, int y2)
-{
-    struct list *path = create_list();
-
-    if (!previous[EXPAND2(x1, y1, x2, y2)])
-        return NULL;
-    add_front_list(path, &tiles[x2][y2]);
-    while (x1 != x2 || y1 != y2) {
-        struct entity *pe = previous[EXPAND2(x1, y1, x2, y2)];
-        x2 = pe->x;
-        y2 = pe->y;
-        add_front_list(path, &tiles[x2][y2]);
-    }
-    return path;
 }
 
 enum dir face_to(struct entity *subject, struct entity *object)
@@ -540,7 +569,7 @@ int main()
     scanf("%d%d", &width, &height);
     NT = width * height;
 
-    // memmory allocation
+    // memory allocation
     struct entity (*tiles)[height] = malloc(NT * sizeof(struct entity));
     int my_proteins[4];
     int opp_proteins[4];
@@ -604,7 +633,7 @@ int main()
         struct array_v *vertices = generate_vertices(tiles);
 
         // shortest path calculator
-        Floyd_Warshall(distances, previous, tiles);
+        Floyd_Warshall(tiles, vertices, distances, previous);
 
         // calculate closest point to my_organism
         for (int x = 0; x < width; x++)
@@ -640,9 +669,9 @@ escape:         ;
             for (int y = 0; y < height; y++) {
                 struct entity *e = &tiles[x][y];
                 if (e->o == OPP) {
-                    if (e->distance_to_organism == 2)
+                    if (e->distance_to_organism == 2 && my_proteins[B] && my_proteins[C])
                         add_front_list(vulnerable_organs, e);
-                    if (e->distance_to_organism < FORBIDDEN)
+                    if (e->distance_to_organism < FORBIDDEN && my_proteins[A])
                         add_front_list(accessible_organs, e);
                 }
                 else if (!(e->status & OCCUPIED) && e->distance_to_organism == 1)
@@ -658,7 +687,7 @@ escape:         ;
         enum type new_organ_type = BASIC;
         enum dir new_organ_dir = N;
         // primary objective: to establish a tentacle if possible
-        if (vulnerable_organs->size && my_proteins[B] && my_proteins[C]) {
+        if (vulnerable_organs->size) {
             // select the highest-value enemy organ
             target = vulnerable_organs->node->content;
             fprintf(stderr, "Aiming for an enemy organ. Targeting %d (%d, %d)\n",
@@ -670,13 +699,13 @@ escape:         ;
             new_organ_dir = face_to(target, vulnerable_organs->node->content);
         }
         // secondary objective: to grow towards the highest-value enemy organ
-        else if (accessible_organs->size && my_proteins[A]) {
+        else if (accessible_organs->size) {
             target = accessible_organs->node->content;
             fprintf(stderr, "Growing towards an enemy organ. Targeting %d (%d, %d)\n",
                     target->organ_id, target->x, target->y);
             my_organ = target->closest_organ;
-//            path = path_FW(tiles, previous, my_organ->x, my_organ->y, target->x, target->y);
-//            target = path->node->next->e;
+            path = path_FW(tiles, previous, my_organ->x, my_organ->y, target->x, target->y);
+            target = path->node->next->content;
         }
         // fallback strategy: to grow wherever possible
         else if (vacant_slots->size && my_proteins[A]) {
@@ -691,7 +720,7 @@ escape:         ;
             target = NULL;
         }
 
-        // clear lists and maps
+        // clear arrays, lists, and maps
         clear_list(vulnerable_organs);
         clear_list(accessible_organs);
         clear_list(vacant_slots);
