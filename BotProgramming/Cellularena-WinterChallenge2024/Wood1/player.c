@@ -480,8 +480,9 @@ struct array_v *generate_vertices(struct entity tiles[width][height])
 
 // Floyd_Warshall-related auxiliary functions -----------------------------------------------------------
 
-#define FORBIDDEN 1000
-#define RESTRICTED 50
+#define FORBIDDEN  1000
+#define RESTRICTED 4
+#define REWARDED   -1
 
 #define EXPAND(a, b, c) (a) * (c) + (b)
 #define EXPAND2(x1, y1, x2, y2) EXPAND(EXPAND((x1), (y1), height), EXPAND((x2), (y2), height), NT)
@@ -521,10 +522,14 @@ void Floyd_Warshall(struct entity tiles[width][height], struct array_v *vertices
                     distances_v[i][j] = FORBIDDEN;
                 else {
                     distances_v[i][j] = 1;
-                    if (ei->status & PROTECTED)
+                    if (ei->status & MY_HARVESTED)
                         distances_v[i][j] += RESTRICTED;
-                    if (ej->status & PROTECTED)
+                    if (ej->status & MY_HARVESTED)
                         distances_v[i][j] += RESTRICTED;
+                    if (ei->status & OPP_HARVESTED)
+                        distances_v[i][j] += REWARDED;
+                    if (ej->status & OPP_HARVESTED)
+                        distances_v[i][j] += REWARDED;
                 }
                 previous_v[i][j] = vi;
             }
