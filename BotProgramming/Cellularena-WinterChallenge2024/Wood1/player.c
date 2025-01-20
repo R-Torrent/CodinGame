@@ -486,7 +486,7 @@ struct array_v *generate_vertices(struct entity tiles[width][height])
 
 #define EXPAND(a, b, c) (a) * (c) + (b)
 #define EXPAND2(x1, y1, x2, y2) EXPAND(EXPAND((x1), (y1), height), EXPAND((x2), (y2), height), NT)
-#define DISTANCES(x1, y1, x2, y2) distances[EXPAND2(x1, y1, x2, y2)]
+#define DISTANCES(x1, y1, x2, y2) wdistances[EXPAND2(x1, y1, x2, y2)]
 #define PREVIOUS(x1, y1, x2, y2) previous[EXPAND2(x1, y1, x2, y2)]
 
 int adjacent_vertices(struct vertex *v1, struct vertex *v2)
@@ -500,10 +500,10 @@ int adjacent_vertices(struct vertex *v1, struct vertex *v2)
 
 // [https://en.wikipedia.org/wiki/Floyd%E2%80%93Warshall_algorithm]
 void Floyd_Warshall(struct entity tiles[width][height], struct array_v *vertices,
-        int *distances, struct entity **previous)
+        int *wdistances, struct entity **previous)
 {
     const int NV = vertices->size;
-    int (*distances_v)[NV] = malloc(NV * NV * sizeof(int));
+    int (*wdistances_v)[NV] = malloc(NV * NV * sizeof(int));
     struct vertex *(*previous_v)[NV] = malloc(NV * NV * sizeof(struct vertex *));
 
     // initialization of Floyd-Warshall matrices & restrict areas ahead of a tentacle
@@ -519,23 +519,23 @@ void Floyd_Warshall(struct entity tiles[width][height], struct array_v *vertices
             // for each edge
             if (adjacent_vertices(vi, vj)) {
                 if (ei->status & MENACED || ej->status & MENACED)
-                    distances_v[i][j] = FORBIDDEN;
+                    wdistances_v[i][j] = FORBIDDEN;
                 else {
-                    distances_v[i][j] = 1;
+                    wdistances_v[i][j] = 1;
                     if (ei->status & MY_HARVESTED)
-                        distances_v[i][j] += RESTRICTED;
+                        wdistances_v[i][j] += RESTRICTED;
                     if (ej->status & MY_HARVESTED)
-                        distances_v[i][j] += RESTRICTED;
+                        wdistances_v[i][j] += RESTRICTED;
                     if (ei->status & OPP_HARVESTED)
-                        distances_v[i][j] += REWARDED;
+                        wdistances_v[i][j] += REWARDED;
                     if (ej->status & OPP_HARVESTED)
-                        distances_v[i][j] += REWARDED;
+                        wdistances_v[i][j] += REWARDED;
                 }
                 previous_v[i][j] = vi;
             }
             // for each vertex
             else {
-                distances_v[i][j] = i == j ? 0 : FORBIDDEN;
+                wdistances_v[i][j] = i == j ? 0 : FORBIDDEN;
                 previous_v[i][j] = i == j ? vi : NULL;
             }
         }
@@ -546,15 +546,15 @@ void Floyd_Warshall(struct entity tiles[width][height], struct array_v *vertices
     for (int k = 0; k < NV; k++)
         for (int i = 0; i < NV; i++)
             for (int j = 0; j < NV; j++)
-                if (distances_v[i][j] > distances_v[i][k] + distances_v[k][j]) {
-                    distances_v[i][j] = distances_v[i][k] + distances_v[k][j];
+                if (wdistances_v[i][j] > wdistances_v[i][k] + wdistances_v[k][j]) {
+                    wdistances_v[i][j] = wdistances_v[i][k] + wdistances_v[k][j];
                     previous_v[i][j] = previous_v[k][j];
                 }
 
     // determines best result for all vertices within each tile
     // (matrix indices range over all tiles)
     for (int i = 0; i < NT * NT; i++) {
-        distances[i] = FORBIDDEN;
+        wdistances[i] = FORBIDDEN;
         previous[i] = NULL;
     }
     for (int i = 0; i < NV; i++) {
@@ -563,14 +563,14 @@ void Floyd_Warshall(struct entity tiles[width][height], struct array_v *vertices
         for (int j = 0; j < NV; j++) {
             int x2 = vertices->array[j]->e->x;
             int y2 = vertices->array[j]->e->y;
-            if (distances_v[i][j] < DISTANCES(x1, y1, x2, y2)) {
-                DISTANCES(x1, y1, x2, y2) = distances_v[i][j];
+            if (wdistances_v[i][j] < DISTANCES(x1, y1, x2, y2)) {
+                DISTANCES(x1, y1, x2, y2) = wdistances_v[i][j];
                 PREVIOUS(x1, y1, x2, y2) = previous_v[i][j]->e;
             }
         }
     }
 
-    free(distances_v);
+    free(wdistances_v);
     free(previous_v);
 }
 
@@ -630,11 +630,11 @@ struct opp_body {
 
 #define NO_INDEX -1
 
-void populate_organisms(int n[2], struct hash_map *organisms, struct hash_map *opp_organisms,
+void populate_organisms(int n[2], struct hash_map **porganisms, struct hash_map **popp_organisms,
         struct hash_map *organs)
 {
-    organisms = create_hash_map(n[MY]);
-    opp_organisms = create_hash_map(n[MY]);
+    *porganisms = create_hash_map(n[MY]);
+    *popp_organisms = create_hash_map(n[OPP]);
 
     for (int i = 0; i < n[MY]; i++) {
         struct body *new = malloc(sizeof(struct body));
@@ -654,11 +654,12 @@ void populate_organisms(int n[2], struct hash_map *organisms, struct hash_map *o
         new->new_organ_dir = N;
         new->path = create_list();
 
-        put_map(organisms, i, new);
+        put_map(*porganisms, i, new);
     }
     for (int i = 0; i < n[OPP]; i++) {
         struct opp_body *new = malloc(sizeof(struct opp_body));
 
+        new->body_parts = create_list();
         new->closest_index = create_hash_map(n[MY]);
         for (int j = 0; j < n[MY]; j++) {
             int *index = malloc(sizeof(int));
@@ -668,7 +669,7 @@ void populate_organisms(int n[2], struct hash_map *organisms, struct hash_map *o
             put_map(new->closest_index, j, index);
         }
 
-        put_map(opp_organisms, i, new);
+        put_map(*popp_organisms, i, new);
     }
 
     // establish the root organs
@@ -678,9 +679,9 @@ void populate_organisms(int n[2], struct hash_map *organisms, struct hash_map *o
 
         if (entity && entity->t == ROOT) {
             if (entity->o == MY)
-                ((struct body *)get_map(organisms, key_organism[MY]++))->root = entity;
+                ((struct body *)get_map(*porganisms, key_organism[MY]++))->root = entity;
             else
-                ((struct opp_body *)get_map(opp_organisms, key_organism[OPP]++))->root = entity;
+                ((struct opp_body *)get_map(*popp_organisms, key_organism[OPP]++))->root = entity;
         }
     }
 
@@ -691,7 +692,7 @@ void populate_organisms(int n[2], struct hash_map *organisms, struct hash_map *o
         if (entity) {
             if (entity->o == MY)
                 for (int j = 0; ; j++) {
-                    struct body *body = get_map(organisms, j);
+                    struct body *body = get_map(*porganisms, j);
 
                     if (body->root->organ_id == entity->organ_root_id) {
                         add_front_list(body->body_parts, entity);
@@ -700,7 +701,7 @@ void populate_organisms(int n[2], struct hash_map *organisms, struct hash_map *o
                 }
             else
                 for (int j = 0; ; j++) {
-                    struct opp_body *opp_body = get_map(opp_organisms, j);
+                    struct opp_body *opp_body = get_map(*popp_organisms, j);
 
                     if (opp_body->root->organ_id == entity->organ_root_id) {
                         add_front_list(opp_body->body_parts, entity);
@@ -708,6 +709,90 @@ void populate_organisms(int n[2], struct hash_map *organisms, struct hash_map *o
                     }
                 }
         }
+    }
+}
+
+int compare_highest_value(void *data, struct entity *e0, struct entity *e1)
+{
+    (void)data;
+    return e1->value - e0->value;
+}
+
+int compare_closest_from_myroot(void *data, struct entity *e0, struct entity *e1)
+{
+    struct entity *my_root = (struct entity *)data;
+
+    return abs(e0->x - my_root->x) + abs(e0->y - my_root->y) -
+            (abs(e1->x - my_root->x) + abs(e1->y - my_root->y));
+}
+
+// tabulate my organism's disposition to engage
+// (closest_sources stores the index in the same fashion as closest_index in opp_body)
+void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
+        int (*closest_sources)[4], struct hash_map *organisms, struct hash_map *opp_organisms)
+{
+    for (int i = 0; i < organisms->size; i++)
+        for (enum type j = A; j <= D; j++)
+            closest_sources[i][j] = NO_INDEX;
+
+    for (int x = 0; x < width; x++)
+        for (int y = 0; y < height; y++) {
+            int index = EXPAND(x, y, height);
+
+            for (int i = 0; i < organisms->size; i++) {
+                struct body *body = get_map(organisms, i);
+
+                    // calculate the closest points to my organisms...
+                for (struct node *n = body->body_parts->node; n; n = n->next) {
+                    struct entity *ebody = n->content;
+                    int d = DISTANCES(ebody->x, ebody->y, x, y);
+
+                    if (d < body->distance_to_organism[index]) {
+                        body->distance_to_organism[index] = d;
+                        body->closest_organ[index] = ebody;
+                    }
+                    // ... and locations of the closest protein sources
+                    if (tiles[x][y].status & ISPROTEIN) {
+                        int closest_index = closest_sources[i][tiles[x][y].t];
+                        int min_d = closest_index == NO_INDEX ? FORBIDDEN :
+                                body->distance_to_organism[closest_index];
+
+                        if (d < min_d)
+                            closest_sources[i][tiles[x][y].t] = index;
+                    }
+                }
+                // fill-in lists of interesting tiles
+                if (tiles[x][y].o == OPP && body->distance_to_organism[index] < FORBIDDEN)
+                    add_front_list(body->accessible_organs, &tiles[x][y]);
+                else if (!(tiles[x][y].status & OCCUPIED) && body->distance_to_organism[index] == 1)
+                    add_front_list(body->vacant_slots, &tiles[x][y]);
+            }
+        }
+
+    for (int i = 0; i < organisms->size; i++) {
+        struct body *body = get_map(organisms, i);
+
+        // figure the index of the closest distance to all opponents
+        for (int j = 0; j < opp_organisms->size; j++) {
+            struct opp_body *opp_body = get_map(opp_organisms, j);
+            int *closest_index = get_map(opp_body->closest_index, i);
+            int min_d = *closest_index == NO_INDEX ? FORBIDDEN :
+                    body->distance_to_organism[*closest_index];
+
+            for (struct node *n = opp_body->body_parts->node; n; n = n->next) {
+                    struct entity *e1 = n->content;
+                    int index = EXPAND(e1->x, e1->y, height);
+                    int d = body->distance_to_organism[index];
+
+                    if (d < min_d)
+                        *closest_index = index;
+            }
+        }
+
+        reorder_list(NULL, body->accessible_organs,
+                (int (*)(void *, void *, void *))compare_highest_value);
+        reorder_list(body->root, body->vacant_slots,
+                (int (*)(void *, void *, void *))compare_closest_from_myroot);
     }
 }
 
@@ -729,102 +814,7 @@ void del_opp_inner_body(struct opp_body *opp_body)
     free(opp_body);
 }
 
-// tabulate my organism's disposition to engage
-// (closest_sources stores the index in the same fashion as closest_index in opp_body)
-void inspect_surroundings(struct entity tiles[width][height], int *distances,
-        int (*closest_sources)[4], struct hash_map *organisms, struct hash_map *opp_organisms)
-{
-    for (int i = 0; i < organisms->size; i++)
-        for (enum type j = A; j <= D; j++)
-            closest_sources[i][j] = NO_INDEX;
-
-    // calculate the closest points to my organisms
-    for (int x = 0; x < width; x++)
-        for (int y = 0; y < height; y++)
-            for (int i = 0; i < organisms->size; i++) {
-                struct body *body = get_map(organisms, i);
-
-                for (struct node *n = body->body_parts->node; n; n = n->next) {
-                    struct entity *e1 = n->content;
-                    int d = DISTANCES(x, y, e1->x, e1->y);
-                    int index = EXPAND(x, y, height);
-
-                    if (d < body->distance_to_organism[index]) {
-                        body->distance_to_organism[index] = d;
-                        body->closest_organ[index] = e1;
-                    }
-                    if (tiles[x][y].status & ISPROTEIN) {
-                        int closest_index = closest_sources[i][tiles[x][y].t];
-                        int min_d = closest_index == NO_INDEX ? FORBIDDEN :
-                                body->distance_to_organism[closest_index];
-
-                        if (d < min_d)
-                            closest_sources[i][tiles[x][y].t] = index;
-                    }
-                }
-            }
-
-    // figure the index of the closest distance to all opponents
-    for (int i = 0; i < organisms->size; i++) {
-        struct body *body = get_map(organisms, i);
-
-        for (int j = 0; j < opp_organisms->size; j++) {
-            struct opp_body *opp_body = get_map(opp_organisms, j);
-            int *closest_index = get_map(opp_body->closest_index, i);
-            int min_d = *closest_index == NO_INDEX ? FORBIDDEN :
-                    body->distance_to_organism[*closest_index];
-
-            for (struct node *n = opp_body->body_parts->node; n; n = n->next) {
-                    struct entity *e1 = n->content;
-                    int index = EXPAND(e1->x, e1->y, height);
-                    int d = body->distance_to_organism[index];
-
-                    if (d < min_d)
-                        *closest_index = index;
-            }
-        }
-    }
-}
-
-/*
-int compare_highest_value(void *data, struct entity *e0, struct entity *e1)
-{
-    (void)data;
-    return e1->value - e0->value;
-}
-
-int compare_closest_from_myroot(void *data, struct entity *e0, struct entity *e1)
-{
-    struct entity *my_root = (struct entity *)data;
-
-    return abs(e0->x - my_root->x) + abs(e0->y - my_root->y) -
-            (abs(e1->x - my_root->x) + abs(e1->y - my_root->y));
-}
-
-
-    // fill-in lists of interesting tiles
-    for (int i = 0; i < organs->size; i++) {
-        struct entity *e = get_map(organs, i);
-
-        if (!e)
-            continue;
-        for (int j = 0; j < organisms->size; j++) {
-            struct body *organism = get_map(organisms, j);
-            int d = organism->distance_to_organism[i];
-
-            if (e->o == OPP && d < FORBIDDEN)
-                add_front_list(organism->accessible_organs, e);
-            else if (!(e->status & OCCUPIED) && d == 1)
-                add_front_list(organism->vacant_slots, e);
-
-            reorder_list(NULL, organism->accessible_organs,
-                    (int (*)(void *, void *, void *))compare_highest_value);
-            reorder_list(organism->root, organism->vacant_slots,
-                    (int (*)(void *, void *, void *))compare_closest_from_myroot);
-        }
-    }
-}
-*/
+// functions for the tactical overmind  -----------------------------------------------------------------
 
 enum dir face_to(struct entity *subject, struct entity *object)
 {
@@ -894,7 +884,7 @@ int main()
     int opp_proteins[4];
     int sources[3][4];
     int n_organisms[2];
-    int *distances = malloc(NT * NT * sizeof(int));
+    int *wdistances = malloc(NT * NT * sizeof(int)); // weighted distances of paths starting at my organs
     struct entity **previous = malloc(NT * NT * sizeof(struct entity *));
 
     init_grid(tiles);
@@ -951,23 +941,24 @@ int main()
 #endif
 
         // establish self-governing organisms
-        populate_organisms(n_organisms, organisms, opp_organisms, organs);
+        populate_organisms(n_organisms, &organisms, &opp_organisms, organs);
 
         // establish vertex-entity relationships of possible nodes in new routes
         struct array_v *vertices = generate_vertices(tiles);
 
         // shortest path calculator of potential new routes
-        Floyd_Warshall(tiles, vertices, distances, previous);
+        Floyd_Warshall(tiles, vertices, wdistances, previous);
 
         int (*closest_sources)[4] = malloc(n_organisms[MY] * 4 * sizeof(int));
         // my organisms appraise their surroundings
-        inspect_surroundings(tiles, distances, closest_sources, organisms, opp_organisms);
+        inspect_surroundings(tiles, wdistances, closest_sources, organisms, opp_organisms);
 
 #ifdef DEBUG
         // quality control -- print-out of my organisms
         print_organisms(organisms, opp_organisms);
 #endif
 
+/*
         // strategy selection
         struct entity *my_organ;
         enum type new_organ_type = BASIC;
@@ -1011,7 +1002,7 @@ int main()
             fprintf(stderr, "Nothing to do!\n");
             target = NULL;
         }
-
+*/
         // output commands
         for (int i = 0; i < required_actions_count; i++) {
             struct body *organism = get_map(organisms, i);
@@ -1030,6 +1021,8 @@ int main()
                 printf("WAIT");
             if (!loop)
                 printf(" glhf");
+            else if (loop == 99)
+                printf(" gg");
             putchar('\n');
         }
 
@@ -1040,6 +1033,10 @@ int main()
         free(vertices);
         free(closest_sources);
     }
+
+    free(tiles);
+    free(wdistances);
+    free(previous);
 
     return 0;
 }
