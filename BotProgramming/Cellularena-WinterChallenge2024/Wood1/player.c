@@ -79,6 +79,33 @@ char *owner_str[] = {
 };
 #undef Y
 
+#define RESTRICTIONS    \
+Y(NORMAL)               \
+Y(RESTRICTED_A)         \
+Y(RESTRICTED_B)         \
+Y(RESTRICTED_C)         \
+Y(RESTRICTED_D)         \
+Y(FORBIDDEN)            \
+Y(REWARDED_A)           \
+Y(REWARDED_B)           \
+Y(REWARDED_C)           \
+Y(REWARDED_D)
+
+#define Y(a) a,
+enum restrictions {
+    RESTRICTIONS
+};
+#undef Y
+
+#define Y(a) #a,
+char *restrictions_str[] = {
+    RESTRICTIONS
+};
+#undef Y
+
+// weights the restriction levels impose on the pathing algorithm
+int w[sizeof(restrictions_str) / sizeof(restrictions_str[0])];
+
 size_t determine_enum(char *options[], char *selection)
 {
     for (char **o = options; ; o++)
@@ -378,17 +405,19 @@ void assess_tiles(struct entity tiles[width][height],
         for (int y = 0; y < height; y++) {
             int t = tiles[x][y].t;
             // single-tile value = # of resorces required to build
-            int value = t == BASIC ? 1 : t == HARVESTER || t == TENTACLE
-                    || t == SPORER ? 2 : t == ROOT ? 3 : 0;
+            int value = t == BASIC ? 1 :
+                    t == HARVESTER || t == TENTACLE || t == SPORER ? 2 :
+                    t == ROOT ? 3 : 0;
 
             // determine protein sources
+            // (FREE stands for "available to me")
             if (tiles[x][y].status & ISPROTEIN) {
                 if (tiles[x][y].status & MY_HARVESTED)
                     sources[MY][t]++;
+                else
+                    sources[FREE][t]++;
                 if (tiles[x][y].status & OPP_HARVESTED)
                     sources[OPP][t]++;
-                if (!(tiles[x][y].status & (MY_HARVESTED | OPP_HARVESTED)))
-                    sources[FREE][t]++;
             }
             // determine organ value
             // value = its own + that of all its descendants
@@ -478,11 +507,35 @@ struct array_v *generate_vertices(struct entity tiles[width][height])
     return array;
 }
 
-// Floyd_Warshall-related auxiliary functions -----------------------------------------------------------
+// base weights for the pathing
+#define BNORMAL     1
+#define BRESTRICTED 2
+#define BFORBIDDEN  1000
+#define BREWARDED   -1
 
-#define FORBIDDEN  1000
-#define RESTRICTED 4
-#define REWARDED   -1
+void weigh_restriction_levels(int turn, int sources[3][4])
+{
+    // preciousness of the resource
+    int prec[2][4];
+
+    for (enum type t = A; t <= D; t++) {
+        prec[MY][t] = sources[MY][t] <= 1 ? 2 : 1;
+        prec[OPP][t] = sources[OPP][t] <= 1 ? 2 : 1;
+    }
+
+    w[NORMAL]       = BNORMAL;
+    w[RESTRICTED_A] = BNORMAL + (BRESTRICTED * prec[MY][A] - BNORMAL) * (turn >= 97 ? 0 : 1);
+    w[RESTRICTED_B] = BNORMAL + (BRESTRICTED * prec[MY][B] - BNORMAL) * (turn >= 97 ? 0 : 1);
+    w[RESTRICTED_C] = BNORMAL + (BRESTRICTED * prec[MY][C] - BNORMAL) * (turn >= 97 ? 0 : 1);
+    w[RESTRICTED_D] = BNORMAL + (BRESTRICTED * prec[MY][D] - BNORMAL) * (turn >= 97 ? 0 : 1);
+    w[FORBIDDEN]    = BFORBIDDEN;
+    w[REWARDED_A]   = BNORMAL + (BREWARDED * prec[OPP][A] - BNORMAL) * (turn == 100 ? 0 : 1);
+    w[REWARDED_B]   = BNORMAL + (BREWARDED * prec[OPP][B] - BNORMAL) * (turn == 100 ? 0 : 1);
+    w[REWARDED_C]   = BNORMAL + (BREWARDED * prec[OPP][C] - BNORMAL) * (turn == 100 ? 0 : 1);
+    w[REWARDED_D]   = BNORMAL + (BREWARDED * prec[OPP][D] - BNORMAL) * (turn == 100 ? 0 : 1);
+}
+
+// Floyd_Warshall-related auxiliary functions -----------------------------------------------------------
 
 #define EXPAND(a, b, c) (a) * (c) + (b)
 #define EXPAND2(x1, y1, x2, y2) EXPAND(EXPAND((x1), (y1), height), EXPAND((x2), (y2), height), NT)
@@ -519,23 +572,39 @@ void Floyd_Warshall(struct entity tiles[width][height], struct array_v *vertices
             // for each edge
             if (adjacent_vertices(vi, vj)) {
                 if (ei->status & MENACED || ej->status & MENACED)
-                    wdistances_v[i][j] = FORBIDDEN;
+                    wdistances_v[i][j] = w[FORBIDDEN];
                 else {
-                    wdistances_v[i][j] = 1;
+                    wdistances_v[i][j] = w[NORMAL];
                     if (ei->status & MY_HARVESTED)
-                        wdistances_v[i][j] += RESTRICTED;
+                        wdistances_v[i][j] +=
+                                ei->t == A ? w[RESTRICTED_A] :
+                                ei->t == B ? w[RESTRICTED_B] :
+                                ei->t == C ? w[RESTRICTED_C] :
+                                w[RESTRICTED_D];
                     if (ej->status & MY_HARVESTED)
-                        wdistances_v[i][j] += RESTRICTED;
+                        wdistances_v[i][j] +=
+                                ej->t == A ? w[RESTRICTED_A] :
+                                ej->t == B ? w[RESTRICTED_B] :
+                                ej->t == C ? w[RESTRICTED_C] :
+                                w[RESTRICTED_D];
                     if (ei->status & OPP_HARVESTED)
-                        wdistances_v[i][j] += REWARDED;
+                        wdistances_v[i][j] +=
+                                ei->t == A ? w[REWARDED_A] :
+                                ei->t == B ? w[REWARDED_B] :
+                                ei->t == C ? w[REWARDED_C] :
+                                w[REWARDED_D];
                     if (ej->status & OPP_HARVESTED)
-                        wdistances_v[i][j] += REWARDED;
+                        wdistances_v[i][j] +=
+                                ej->t == A ? w[REWARDED_A] :
+                                ej->t == B ? w[REWARDED_B] :
+                                ej->t == C ? w[REWARDED_C] :
+                                w[REWARDED_D];
                 }
                 previous_v[i][j] = vi;
             }
             // for each vertex
             else {
-                wdistances_v[i][j] = i == j ? 0 : FORBIDDEN;
+                wdistances_v[i][j] = i == j ? 0 : w[FORBIDDEN];
                 previous_v[i][j] = i == j ? vi : NULL;
             }
         }
@@ -554,7 +623,7 @@ void Floyd_Warshall(struct entity tiles[width][height], struct array_v *vertices
     // determines best result for all vertices within each tile
     // (matrix indices range over all tiles)
     for (int i = 0; i < NT * NT; i++) {
-        wdistances[i] = FORBIDDEN;
+        wdistances[i] = w[FORBIDDEN];
         previous[i] = NULL;
     }
     for (int i = 0; i < NV; i++) {
@@ -644,7 +713,7 @@ void populate_organisms(int n[2], struct hash_map **porganisms, struct hash_map 
         new->closest_organ = malloc(NT * sizeof(struct entity *));
         for (int x = 0; x < width; x++)
             for (int y = 0; y < height; y++) {
-                new->distance_to_organism[EXPAND(x, y, height)] = FORBIDDEN;
+                new->distance_to_organism[EXPAND(x, y, height)] = w[FORBIDDEN];
                 new->closest_organ[EXPAND(x, y, height)] = NULL;
             }
         new->accessible_organs = create_list();
@@ -722,6 +791,7 @@ int compare_closest_from_myroot(void *data, struct entity *e0, struct entity *e1
 {
     struct entity *my_root = (struct entity *)data;
 
+    // "taxicab" geometry
     return abs(e0->x - my_root->x) + abs(e0->y - my_root->y) -
             (abs(e1->x - my_root->x) + abs(e1->y - my_root->y));
 }
@@ -754,7 +824,7 @@ void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
                     // ... and locations of the closest protein sources
                     if (tiles[x][y].status & ISPROTEIN) {
                         int closest_index = closest_sources[i][tiles[x][y].t];
-                        int min_d = closest_index == NO_INDEX ? FORBIDDEN :
+                        int min_d = closest_index == NO_INDEX ? w[FORBIDDEN] :
                                 body->distance_to_organism[closest_index];
 
                         if (d < min_d)
@@ -762,7 +832,7 @@ void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
                     }
                 }
                 // fill-in lists of interesting tiles
-                if (tiles[x][y].o == OPP && body->distance_to_organism[index] < FORBIDDEN)
+                if (tiles[x][y].o == OPP && body->distance_to_organism[index] < w[FORBIDDEN])
                     add_front_list(body->accessible_organs, &tiles[x][y]);
                 else if (!(tiles[x][y].status & OCCUPIED) && body->distance_to_organism[index] == 1)
                     add_front_list(body->vacant_slots, &tiles[x][y]);
@@ -776,7 +846,7 @@ void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
         for (int j = 0; j < opp_organisms->size; j++) {
             struct opp_body *opp_body = get_map(opp_organisms, j);
             int *closest_index = get_map(opp_body->closest_index, i);
-            int min_d = *closest_index == NO_INDEX ? FORBIDDEN :
+            int min_d = *closest_index == NO_INDEX ? w[FORBIDDEN] :
                     body->distance_to_organism[*closest_index];
 
             for (struct node *n = opp_body->body_parts->node; n; n = n->next) {
@@ -843,6 +913,12 @@ void print_entities(struct entity tiles[width][height])
         }
 }
 
+void print_restrictions(void)
+{
+    for (int i = 0; i < sizeof(restrictions_str) / sizeof(restrictions_str[0]); i++)
+        fprintf(stderr, "%s: %d\n", restrictions_str[i], w[i]);
+}
+
 void print_organisms(struct hash_map *organisms, struct hash_map *opp_organisms)
 {
     for (int i = 0; i < organisms->size; i++) {
@@ -890,7 +966,7 @@ int main()
     init_grid(tiles);
 
     // game loop
-    for (int loop = 0; ; loop++) {
+    for (int turn = 1; turn <= 100; turn++) {
         reset_grid(tiles);
         struct hash_map *organisms, *opp_organisms;
         memset(sources, 0, 12 * sizeof(int));
@@ -945,6 +1021,14 @@ int main()
 
         // establish vertex-entity relationships of possible nodes in new routes
         struct array_v *vertices = generate_vertices(tiles);
+
+        // ponderate the pathing restriction levels
+        weigh_restriction_levels(turn, sources);
+
+#ifdef DEBUG
+        // quality control -- print-out the weights on restricted tiles
+        print_restrictions();
+#endif
 
         // shortest path calculator of potential new routes
         Floyd_Warshall(tiles, vertices, wdistances, previous);
@@ -1019,9 +1103,9 @@ int main()
                         dir_str[organism->new_organ_dir]);
             else
                 printf("WAIT");
-            if (!loop)
+            if (turn == 1)
                 printf(" glhf");
-            else if (loop == 99)
+            else if (turn == 100)
                 printf(" gg");
             putchar('\n');
         }
