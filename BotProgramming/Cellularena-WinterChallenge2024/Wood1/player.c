@@ -157,14 +157,15 @@ void remove_from_list(struct list *list, void *content)
     }
 }
 
-void iterate_over_list(struct list *list, void (*action)(void *))
+void iterate_over_list(void *data, struct list *list,
+        void (*action)(void *, void *))
 {
     struct node *next;
 
     if (list)
         for (struct node *n = list->node; n; n = next) {
             next = n->next;
-            action(n->content);
+            action(data, n->content);
         }
 }
 
@@ -293,6 +294,11 @@ int width;
 int height;
 // NT = width * height
 int NT;
+
+#define EXPAND(a, b, c) ((a) * (c) + (b))
+#define EXP1(a, b) EXPAND(a, b, height)
+#define EXP2(x1, y1, x2, y2) EXPAND(EXP1(x1, y1), EXP1(x2, y2), NT)
+#define INDEX(a) EXP1((a)->x, (a)->y)
 
 void init_grid(struct entity tiles[width][height])
 {
@@ -537,10 +543,8 @@ void weigh_restriction_levels(int turn, int sources[3][4])
 
 // Floyd_Warshall-related auxiliary functions -----------------------------------------------------------
 
-#define EXPAND(a, b, c) (a) * (c) + (b)
-#define EXPAND2(x1, y1, x2, y2) EXPAND(EXPAND((x1), (y1), height), EXPAND((x2), (y2), height), NT)
-#define DISTANCES(x1, y1, x2, y2) wdistances[EXPAND2(x1, y1, x2, y2)]
-#define PREVIOUS(x1, y1, x2, y2) previous[EXPAND2(x1, y1, x2, y2)]
+#define DISTANCES(x1, y1, x2, y2) wdistances[EXP2(x1, y1, x2, y2)]
+#define PREVIOUS(x1, y1, x2, y2) previous[EXP2(x1, y1, x2, y2)]
 
 int adjacent_vertices(struct vertex *v1, struct vertex *v2)
 {
@@ -678,6 +682,7 @@ struct body {
     // tiles of interest
     struct list *accessible_organs;
     struct list *vacant_slots;
+    struct list *free_sources[4];
 
     // command specifics
     struct entity *target;
@@ -713,11 +718,13 @@ void populate_organisms(int n[2], struct hash_map **porganisms, struct hash_map 
         new->closest_organ = malloc(NT * sizeof(struct entity *));
         for (int x = 0; x < width; x++)
             for (int y = 0; y < height; y++) {
-                new->distance_to_organism[EXPAND(x, y, height)] = w[FORBIDDEN];
-                new->closest_organ[EXPAND(x, y, height)] = NULL;
+                new->distance_to_organism[EXP1(x, y)] = w[FORBIDDEN];
+                new->closest_organ[EXP1(x, y)] = NULL;
             }
         new->accessible_organs = create_list();
         new->vacant_slots = create_list();
+        for (struct list **l = new->free_sources; l - new->free_sources < 4; l++)
+            *l = create_list();
         new->target = new->from_organ = new->at_location = NULL;
         new->new_organ_type = BASIC;
         new->new_organ_dir = N;
@@ -784,16 +791,21 @@ void populate_organisms(int n[2], struct hash_map **porganisms, struct hash_map 
 int compare_highest_value(void *data, struct entity *e0, struct entity *e1)
 {
     (void)data;
+
     return e1->value - e0->value;
 }
 
-int compare_closest_from_myroot(void *data, struct entity *e0, struct entity *e1)
+int compare_closest_from_myroot(struct entity *my_root, struct entity *e0, struct entity *e1)
 {
-    struct entity *my_root = (struct entity *)data;
-
     // "taxicab" geometry
     return abs(e0->x - my_root->x) + abs(e0->y - my_root->y) -
             (abs(e1->x - my_root->x) + abs(e1->y - my_root->y));
+}
+
+int compare_closest(struct body *body, struct entity *e0, struct entity *e1)
+{
+    return body->distance_to_organism[INDEX(e0)]
+            - body->distance_to_organism[INDEX(e1)];
 }
 
 // tabulate my organism's disposition to engage
@@ -807,7 +819,7 @@ void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
 
     for (int x = 0; x < width; x++)
         for (int y = 0; y < height; y++) {
-            int index = EXPAND(x, y, height);
+            int index = EXP1(x, y);
 
             for (int i = 0; i < organisms->size; i++) {
                 struct body *body = get_map(organisms, i);
@@ -832,9 +844,13 @@ void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
                     }
                 }
                 // fill-in lists of interesting tiles
-                if (tiles[x][y].o == OPP && body->distance_to_organism[index] < w[FORBIDDEN])
-                    add_front_list(body->accessible_organs, &tiles[x][y]);
-                else if (!(tiles[x][y].status & OCCUPIED) && body->distance_to_organism[index] == 1)
+                if (body->distance_to_organism[index] < w[FORBIDDEN]) {
+                    if (tiles[x][y].o == OPP)
+                        add_front_list(body->accessible_organs, &tiles[x][y]);
+                    else if (tiles[x][y].status & ISPROTEIN && !(tiles[x][y].status & MY_HARVESTED))
+                        add_front_list(body->free_sources[tiles[x][y].t], &tiles[x][y]);
+                }
+                if (!(tiles[x][y].status & OCCUPIED) && body->distance_to_organism[index] == 1)
                     add_front_list(body->vacant_slots, &tiles[x][y]);
             }
         }
@@ -851,7 +867,7 @@ void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
 
             for (struct node *n = opp_body->body_parts->node; n; n = n->next) {
                     struct entity *e1 = n->content;
-                    int index = EXPAND(e1->x, e1->y, height);
+                    int index = INDEX(e1);
                     int d = body->distance_to_organism[index];
 
                     if (d < min_d)
@@ -863,6 +879,8 @@ void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
                 (int (*)(void *, void *, void *))compare_highest_value);
         reorder_list(body->root, body->vacant_slots,
                 (int (*)(void *, void *, void *))compare_closest_from_myroot);
+        for (struct list **l = body->free_sources; l - body->free_sources < 4; l++)
+            reorder_list(body, *l, (int (*)(void *, void *, void *))compare_closest);
     }
 }
 
@@ -873,6 +891,8 @@ void del_inner_body(struct body *body)
     free(body->closest_organ);
     clear_list(body->accessible_organs, NULL);
     clear_list(body->vacant_slots, NULL);
+    for (struct list **l = body->free_sources; l - body->free_sources < 4; l++)
+            clear_list(*l, NULL);
     clear_list(body->path, NULL);
     free(body);
 }
@@ -919,31 +939,67 @@ void print_restrictions(void)
         fprintf(stderr, "%s: %d\n", restrictions_str[i], w[i]);
 }
 
+void print_accessible(struct body *body, struct entity *e)
+{
+    int index = INDEX(e);
+
+// ERROR HERE!!! 
+    fprintf(stderr, " %d %p  %p %d\n", index, body, body->closest_organ[index], body->distance_to_organism[index]);
+
+    fprintf(stderr, "  %d accessible from organ %d at distance %d\n",
+            e->organ_id, body->closest_organ[index]->organ_id, body->distance_to_organism[index]);
+}
+
+void print_source(struct body *body, struct entity *e)
+{
+    int index = INDEX(e);
+
+    fprintf(stderr, "  source %s (%d, %d) accessible from organ %d at distance %d\n",
+            type_str[e->t], e->x, e->y, body->closest_organ[index]->organ_id,
+            body->distance_to_organism[index]);
+}
+
+void print_opponent(int my, struct body *body, struct opp_body *opp_body)
+{
+    int index = *(int *)get_map(opp_body->closest_index, my);
+
+    fprintf(stderr, "  MY_%d, organ %d (%d, %d) %d away\n", my,body->closest_organ[index]->organ_id,
+            body->closest_organ[index]->x, body->closest_organ[index]->y,
+            body->distance_to_organism[index]);
+}
+
 void print_organisms(struct hash_map *organisms, struct hash_map *opp_organisms)
 {
     for (int i = 0; i < organisms->size; i++) {
         struct body *o = get_map(organisms, i);
 
-        fprintf(stderr, "MY_organism%d: root_id:%d body_parts:%d acc._tiles:%d vac._tiles:%d\n",
-                i, o->root->organ_id, o->body_parts->size, o->accessible_organs->size,
-                o->vacant_slots->size);
+        fprintf(stderr, "MY_%d: root_id:%d organs:%d acc.tiles:%d vac.tiles:%d"
+                " freeA:%d, freeB:%d, freeC:%d, freeD:%d\n", i, o->root->organ_id, o->body_parts->size,
+                o->accessible_organs->size, o->vacant_slots->size, o->free_sources[A]->size,
+                o->free_sources[B]->size, o->free_sources[C]->size, o->free_sources[D]->size);
+        iterate_over_list(o, o->accessible_organs, (void (*)(void *, void *))print_accessible);
+        for (struct list **l = o->free_sources; l - o->free_sources < 4; l++)
+            iterate_over_list(o, *l, (void (*)(void *, void *))print_source);
     }
     for (int i = 0; i < opp_organisms->size; i++) {
         struct opp_body *o = get_map(opp_organisms, i);
 
-        fprintf(stderr, "OPP_organism%d: root_id:%d body_parts:%d\n",
+        fprintf(stderr, "OPP_%d: root_id:%d organs:%d\n",
                 i, o->root->organ_id, o->body_parts->size);
+        for (int j = 0; j < organisms->size; j++)
+            print_opponent(j, get_map(organisms, i), get_map(opp_organisms, j));
     }
 }
 
-void print_coords(struct entity *e)
+void print_coords(void *data, struct entity *e)
 {
+    (void)data;
     fprintf(stderr, "(%d, %d) ", e->x, e->y);
 }
 
 void print_path(struct list *path)
 {
-    iterate_over_list(path, (void (*)(void *))print_coords);
+    iterate_over_list(NULL, path, (void (*)(void *, void *))print_coords);
     putc('\n', stderr);
 }
 
