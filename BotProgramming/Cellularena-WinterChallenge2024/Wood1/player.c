@@ -541,7 +541,7 @@ void weigh_restriction_levels(int turn, int sources[3][4])
     w[REWARDED_D]   = BNORMAL + (BREWARDED - BNORMAL) * prec[OPP][D];
 }
 
-// Floyd_Warshall-related auxiliary functions -----------------------------------------------------------
+// Floyd_Warshall algorithm functions -------------------------------------------------------------------
 
 #define DISTANCES(x1, y1, x2, y2) wdistances[EXP2(x1, y1, x2, y2)]
 #define PREVIOUS(x1, y1, x2, y2) previous[EXP2(x1, y1, x2, y2)]
@@ -808,6 +808,23 @@ int compare_closest(struct body *body, struct entity *e0, struct entity *e1)
             - body->distance_to_organism[INDEX(e1)];
 }
 
+struct container {
+    int *solution;
+    int *array;
+};
+
+void find_min_distance(struct container *data, struct entity *e)
+{
+    int *closest_index = data->solution;
+    int *distances = data->array;
+    int index = INDEX(e);
+    int min_d = *closest_index == NO_INDEX ? w[FORBIDDEN] : distances[*closest_index];
+    int d = distances[index];
+
+    if (d < min_d)
+        *closest_index = index;
+}
+
 // tabulate my organism's disposition to engage
 // (closest_sources stores the index in the same fashion as closest_index in opp_body)
 void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
@@ -862,17 +879,9 @@ void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
         for (int j = 0; j < opp_organisms->size; j++) {
             struct opp_body *opp_body = get_map(opp_organisms, j);
             int *closest_index = get_map(opp_body->closest_index, i);
-            int min_d = *closest_index == NO_INDEX ? w[FORBIDDEN] :
-                    body->distance_to_organism[*closest_index];
 
-            for (struct node *n = opp_body->body_parts->node; n; n = n->next) {
-                    struct entity *e1 = n->content;
-                    int index = INDEX(e1);
-                    int d = body->distance_to_organism[index];
-
-                    if (d < min_d)
-                        *closest_index = index;
-            }
+            iterate_over_list(&(struct container){closest_index, body->distance_to_organism},
+                    opp_body->body_parts, (void (*)(void *, void *))find_min_distance);
         }
 
         reorder_list(NULL, body->accessible_organs,
@@ -942,30 +951,31 @@ void print_restrictions(void)
 void print_accessible(struct body *body, struct entity *e)
 {
     int index = INDEX(e);
+    struct entity *co = body->closest_organ[index];
 
-// ERROR HERE!!! 
-    fprintf(stderr, " %d %p  %p %d\n", index, body, body->closest_organ[index], body->distance_to_organism[index]);
-
-    fprintf(stderr, "  %d accessible from organ %d at distance %d\n",
-            e->organ_id, body->closest_organ[index]->organ_id, body->distance_to_organism[index]);
+    fprintf(stderr, "  opp_organ %d (%d, %d) accessible from organ %d (%d, %d) at distance %d\n",
+            e->organ_id, e->x, e->y, co->organ_id, co->x, co->y, body->distance_to_organism[index]);
 }
 
 void print_source(struct body *body, struct entity *e)
 {
     int index = INDEX(e);
+    struct entity *co = body->closest_organ[index];
 
-    fprintf(stderr, "  source %s (%d, %d) accessible from organ %d at distance %d\n",
-            type_str[e->t], e->x, e->y, body->closest_organ[index]->organ_id,
-            body->distance_to_organism[index]);
+    fprintf(stderr, "  source %s (%d, %d) accessible from organ %d (%d, %d) at distance %d\n",
+            type_str[e->t], e->x, e->y, co->organ_id, co->x, co->y, body->distance_to_organism[index]);
 }
 
-void print_opponent(int my, struct body *body, struct opp_body *opp_body)
+void print_opponent(int my, struct body *body, int index)
 {
-    int index = *(int *)get_map(opp_body->closest_index, my);
+    if (index != NO_INDEX) {
+        struct entity *co = body->closest_organ[index];
 
-    fprintf(stderr, "  MY_%d, organ %d (%d, %d) %d away\n", my,body->closest_organ[index]->organ_id,
-            body->closest_organ[index]->x, body->closest_organ[index]->y,
-            body->distance_to_organism[index]);
+        fprintf(stderr, "  closest to MY_%d: organ %d (%d, %d) %d away\n", my,
+                co->organ_id, co->x, co->y, body->distance_to_organism[index]);
+    }
+    else
+        fprintf(stderr, "  no line-of-sight with MY_%d\n", my);
 }
 
 void print_organisms(struct hash_map *organisms, struct hash_map *opp_organisms)
@@ -987,7 +997,7 @@ void print_organisms(struct hash_map *organisms, struct hash_map *opp_organisms)
         fprintf(stderr, "OPP_%d: root_id:%d organs:%d\n",
                 i, o->root->organ_id, o->body_parts->size);
         for (int j = 0; j < organisms->size; j++)
-            print_opponent(j, get_map(organisms, i), get_map(opp_organisms, j));
+            print_opponent(j, get_map(organisms, j), *(int *)get_map(o->closest_index, j));
     }
 }
 
@@ -1072,14 +1082,14 @@ int main()
         print_entities(tiles);
 #endif
 
+        // ponderate the pathing restriction levels
+        weigh_restriction_levels(turn, sources);
+
         // establish self-governing organisms
         populate_organisms(n_organisms, &organisms, &opp_organisms, organs);
 
         // establish vertex-entity relationships of possible nodes in new routes
         struct array_v *vertices = generate_vertices(tiles);
-
-        // ponderate the pathing restriction levels
-        weigh_restriction_levels(turn, sources);
 
 #ifdef DEBUG
         // quality control -- print-out the weights on restricted tiles
