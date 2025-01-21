@@ -79,33 +79,6 @@ char *owner_str[] = {
 };
 #undef Y
 
-#define RESTRICTIONS    \
-Y(NORMAL)               \
-Y(RESTRICTED_A)         \
-Y(RESTRICTED_B)         \
-Y(RESTRICTED_C)         \
-Y(RESTRICTED_D)         \
-Y(FORBIDDEN)            \
-Y(REWARDED_A)           \
-Y(REWARDED_B)           \
-Y(REWARDED_C)           \
-Y(REWARDED_D)
-
-#define Y(a) a,
-enum restrictions {
-    RESTRICTIONS
-};
-#undef Y
-
-#define Y(a) #a,
-char *restrictions_str[] = {
-    RESTRICTIONS
-};
-#undef Y
-
-// weights the restriction levels impose on the pathing algorithm
-int w[sizeof(restrictions_str) / sizeof(restrictions_str[0])];
-
 size_t determine_enum(char *options[], char *selection)
 {
     for (char **o = options; ; o++)
@@ -410,7 +383,7 @@ void assess_tiles(struct entity tiles[width][height],
                     t == ROOT ? 3 : 0;
 
             // determine protein sources
-            // (FREE stands for "available to me")
+            // (FREE here stands for "available to me")
             if (tiles[x][y].status & ISPROTEIN) {
                 if (tiles[x][y].status & MY_HARVESTED)
                     sources[MY][t]++;
@@ -507,6 +480,33 @@ struct array_v *generate_vertices(struct entity tiles[width][height])
     return array;
 }
 
+#define RESTRICTIONS    \
+Y(NORMAL)               \
+Y(RESTRICTED_A)         \
+Y(RESTRICTED_B)         \
+Y(RESTRICTED_C)         \
+Y(RESTRICTED_D)         \
+Y(FORBIDDEN)            \
+Y(REWARDED_A)           \
+Y(REWARDED_B)           \
+Y(REWARDED_C)           \
+Y(REWARDED_D)
+
+#define Y(a) a,
+enum restrictions {
+    RESTRICTIONS
+};
+#undef Y
+
+#define Y(a) #a,
+char *restrictions_str[] = {
+    RESTRICTIONS
+};
+#undef Y
+
+// weights the restriction levels impose on the pathing algorithm
+int w[sizeof(restrictions_str) / sizeof(restrictions_str[0])];
+
 // base weights for the pathing
 #define BNORMAL     1
 #define BRESTRICTED 2
@@ -519,20 +519,20 @@ void weigh_restriction_levels(int turn, int sources[3][4])
     int prec[2][4];
 
     for (enum type t = A; t <= D; t++) {
-        prec[MY][t] = sources[MY][t] <= 1 ? 2 : 1;
-        prec[OPP][t] = sources[OPP][t] <= 1 ? 2 : 1;
+        prec[MY][t] = (sources[MY][t] <= 1 ? 2 : 1) * (turn >= 97 ? 0 : 1);
+        prec[OPP][t] = (sources[OPP][t] <= 1 ? 2 : 1) * (turn == 100 ? 0 : 1);
     }
 
     w[NORMAL]       = BNORMAL;
-    w[RESTRICTED_A] = BNORMAL + (BRESTRICTED * prec[MY][A] - BNORMAL) * (turn >= 97 ? 0 : 1);
-    w[RESTRICTED_B] = BNORMAL + (BRESTRICTED * prec[MY][B] - BNORMAL) * (turn >= 97 ? 0 : 1);
-    w[RESTRICTED_C] = BNORMAL + (BRESTRICTED * prec[MY][C] - BNORMAL) * (turn >= 97 ? 0 : 1);
-    w[RESTRICTED_D] = BNORMAL + (BRESTRICTED * prec[MY][D] - BNORMAL) * (turn >= 97 ? 0 : 1);
+    w[RESTRICTED_A] = BNORMAL + (BRESTRICTED - BNORMAL) * prec[MY][A];
+    w[RESTRICTED_B] = BNORMAL + (BRESTRICTED - BNORMAL) * prec[MY][B];
+    w[RESTRICTED_C] = BNORMAL + (BRESTRICTED - BNORMAL) * prec[MY][C];
+    w[RESTRICTED_D] = BNORMAL + (BRESTRICTED - BNORMAL) * prec[MY][D];
     w[FORBIDDEN]    = BFORBIDDEN;
-    w[REWARDED_A]   = BNORMAL + (BREWARDED * prec[OPP][A] - BNORMAL) * (turn == 100 ? 0 : 1);
-    w[REWARDED_B]   = BNORMAL + (BREWARDED * prec[OPP][B] - BNORMAL) * (turn == 100 ? 0 : 1);
-    w[REWARDED_C]   = BNORMAL + (BREWARDED * prec[OPP][C] - BNORMAL) * (turn == 100 ? 0 : 1);
-    w[REWARDED_D]   = BNORMAL + (BREWARDED * prec[OPP][D] - BNORMAL) * (turn == 100 ? 0 : 1);
+    w[REWARDED_A]   = BNORMAL + (BREWARDED - BNORMAL) * prec[OPP][A];
+    w[REWARDED_B]   = BNORMAL + (BREWARDED - BNORMAL) * prec[OPP][B];
+    w[REWARDED_C]   = BNORMAL + (BREWARDED - BNORMAL) * prec[OPP][C];
+    w[REWARDED_D]   = BNORMAL + (BREWARDED - BNORMAL) * prec[OPP][D];
 }
 
 // Floyd_Warshall-related auxiliary functions -----------------------------------------------------------
