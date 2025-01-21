@@ -86,7 +86,7 @@ size_t determine_enum(char *options[], char *selection)
             return o - options;
 }
 
-// linked list & hash map functions ---------------------------------------------------------------------
+// linked list & hash map functions  --------------------------------------------------------------------
 
 struct node {
     int key;
@@ -239,7 +239,7 @@ void clear_map(struct hash_map *map, void (*del_content)(void *))
     free(map);
 }
 
-// tile-related auxiliary functions ---------------------------------------------------------------------
+// tile-related auxiliary functions  --------------------------------------------------------------------
 
 // status flags for the tiles
 // if A, B, C, D, or EMPTY then 0, 1 otherwise
@@ -541,7 +541,7 @@ void weigh_restriction_levels(int turn, int sources[3][4])
     w[REWARDED_D]   = BNORMAL + (BREWARDED - BNORMAL) * prec[OPP][D];
 }
 
-// Floyd_Warshall algorithm functions -------------------------------------------------------------------
+// Floyd_Warshall algorithm functions  ------------------------------------------------------------------
 
 #define DISTANCES(x1, y1, x2, y2) wdistances[EXP2(x1, y1, x2, y2)]
 #define PREVIOUS(x1, y1, x2, y2) previous[EXP2(x1, y1, x2, y2)]
@@ -668,7 +668,7 @@ struct list *path_FW(struct entity tiles[width][height],
     return path;
 }
 
-// body-related auxiliary functions ---------------------------------------------------------------------
+// body-related auxiliary functions  --------------------------------------------------------------------
 
 struct body {
     struct entity *root;
@@ -684,13 +684,8 @@ struct body {
     struct list *vacant_slots;
     struct list *free_sources[4];
 
-    // command specifics
-    struct entity *target;
-    struct entity *from_organ;
-    struct entity *at_location;
-    enum type new_organ_type;
-    enum dir new_organ_dir;
-    struct list *path;
+    // tactical commands
+    struct command *orders;
 };
 
 struct opp_body {
@@ -710,6 +705,7 @@ void populate_organisms(int n[2], struct hash_map **porganisms, struct hash_map 
     *porganisms = create_hash_map(n[MY]);
     *popp_organisms = create_hash_map(n[OPP]);
 
+    // my_organisms
     for (int i = 0; i < n[MY]; i++) {
         struct body *new = malloc(sizeof(struct body));
 
@@ -725,13 +721,11 @@ void populate_organisms(int n[2], struct hash_map **porganisms, struct hash_map 
         new->vacant_slots = create_list();
         for (struct list **l = new->free_sources; l - new->free_sources < 4; l++)
             *l = create_list();
-        new->target = new->from_organ = new->at_location = NULL;
-        new->new_organ_type = BASIC;
-        new->new_organ_dir = N;
-        new->path = create_list();
 
         put_map(*porganisms, i, new);
     }
+
+    // opp_organisms
     for (int i = 0; i < n[OPP]; i++) {
         struct opp_body *new = malloc(sizeof(struct opp_body));
 
@@ -798,8 +792,8 @@ int compare_highest_value(void *data, struct entity *e0, struct entity *e1)
 int compare_closest_from_myroot(struct entity *my_root, struct entity *e0, struct entity *e1)
 {
     // "taxicab" geometry
-    return abs(e0->x - my_root->x) + abs(e0->y - my_root->y) -
-            (abs(e1->x - my_root->x) + abs(e1->y - my_root->y));
+    return abs(e0->x - my_root->x) + abs(e0->y - my_root->y)
+            - (abs(e1->x - my_root->x) + abs(e1->y - my_root->y));
 }
 
 int compare_closest(struct body *body, struct entity *e0, struct entity *e1)
@@ -808,15 +802,11 @@ int compare_closest(struct body *body, struct entity *e0, struct entity *e1)
             - body->distance_to_organism[INDEX(e1)];
 }
 
-struct container {
-    int *solution;
-    int *array;
-};
 
-void find_min_distance(struct container *data, struct entity *e)
+void find_min_distance(int *data[2], struct entity *e)
 {
-    int *closest_index = data->solution;
-    int *distances = data->array;
+    int *closest_index = data[0];
+    int *distances = data[1];
     int index = INDEX(e);
     int min_d = *closest_index == NO_INDEX ? w[FORBIDDEN] : distances[*closest_index];
     int d = distances[index];
@@ -880,7 +870,7 @@ void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
             struct opp_body *opp_body = get_map(opp_organisms, j);
             int *closest_index = get_map(opp_body->closest_index, i);
 
-            iterate_over_list(&(struct container){closest_index, body->distance_to_organism},
+            iterate_over_list((int *[]){closest_index, body->distance_to_organism},
                     opp_body->body_parts, (void (*)(void *, void *))find_min_distance);
         }
 
@@ -893,27 +883,29 @@ void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
     }
 }
 
-void del_inner_body(struct body *body)
-{
-    clear_list(body->body_parts, NULL);
-    free(body->distance_to_organism);
-    free(body->closest_organ);
-    clear_list(body->accessible_organs, NULL);
-    clear_list(body->vacant_slots, NULL);
-    for (struct list **l = body->free_sources; l - body->free_sources < 4; l++)
-            clear_list(*l, NULL);
-    clear_list(body->path, NULL);
-    free(body);
-}
-
-void del_opp_inner_body(struct opp_body *opp_body)
-{
-    clear_list(opp_body->body_parts, NULL);
-    clear_map(opp_body->closest_index, free);
-    free(opp_body);
-}
-
 // functions for the tactical overmind  -----------------------------------------------------------------
+
+struct command {
+    struct entity *target;
+    struct entity *from_organ;
+    struct entity *at_location;
+    enum type new_organ_type;
+    enum dir new_organ_dir;
+    struct list *path;
+};
+
+void order_organisms(struct hash_map *organisms)
+{
+    for (int i = 0; i < organisms->size; i++) {
+        struct command *orders = malloc(sizeof(struct command));
+
+        ((struct body *)get_map(organisms, i))->orders = orders;
+        orders->target = orders->from_organ = orders->at_location = NULL;
+        orders->new_organ_type = BASIC;
+        orders->new_organ_dir = N;
+        orders->path = create_list();
+    }
+}
 
 enum dir face_to(struct entity *subject, struct entity *object)
 {
@@ -924,6 +916,29 @@ enum dir face_to(struct entity *subject, struct entity *object)
     if (object->y == subject->y)
         return object->x < subject->x ? W : E;
     return X;
+}
+
+// clean-up operations  ---------------------------------------------------------------------------------
+
+void del_inner_body(struct body *body)
+{
+    clear_list(body->body_parts, NULL);
+    free(body->distance_to_organism);
+    free(body->closest_organ);
+    clear_list(body->accessible_organs, NULL);
+    clear_list(body->vacant_slots, NULL);
+    for (struct list **l = body->free_sources; l - body->free_sources < 4; l++)
+            clear_list(*l, NULL);
+    clear_list(body->orders->path, NULL);
+    free(body->orders);
+    free(body);
+}
+
+void del_opp_inner_body(struct opp_body *opp_body)
+{
+    clear_list(opp_body->body_parts, NULL);
+    clear_map(opp_body->closest_index, free);
+    free(opp_body);
 }
 
 // debugging assists  -----------------------------------------------------------------------------------
@@ -944,8 +959,12 @@ void print_entities(struct entity tiles[width][height])
 
 void print_restrictions(void)
 {
-    for (int i = 0; i < sizeof(restrictions_str) / sizeof(restrictions_str[0]); i++)
-        fprintf(stderr, "%s: %d\n", restrictions_str[i], w[i]);
+    for (enum restrictions r = NORMAL; r < FORBIDDEN; r++)
+        fprintf(stderr, "%s: %d ", restrictions_str[r], w[r]);
+    putc('\n', stderr);
+    for (enum restrictions r = FORBIDDEN; r < sizeof(restrictions_str) / sizeof(*restrictions_str); r++)
+        fprintf(stderr, "%s: %d ", restrictions_str[r], w[r]);
+    putc('\n', stderr);
 }
 
 void print_accessible(struct body *body, struct entity *e)
@@ -991,6 +1010,7 @@ void print_organisms(struct hash_map *organisms, struct hash_map *opp_organisms)
         for (struct list **l = o->free_sources; l - o->free_sources < 4; l++)
             iterate_over_list(o, *l, (void (*)(void *, void *))print_source);
     }
+
     for (int i = 0; i < opp_organisms->size; i++) {
         struct opp_body *o = get_map(opp_organisms, i);
 
@@ -1104,12 +1124,13 @@ int main()
         inspect_surroundings(tiles, wdistances, closest_sources, organisms, opp_organisms);
 
 #ifdef DEBUG
-        // quality control -- print-out of my organisms
+        // quality control -- print-out of all organisms
         print_organisms(organisms, opp_organisms);
 #endif
 
 /*
         // strategy selection
+
         struct entity *my_organ;
         enum type new_organ_type = BASIC;
         enum dir new_organ_dir = N;
@@ -1153,20 +1174,24 @@ int main()
             target = NULL;
         }
 */
+
+        // tactical_commands
+        order_organisms(organisms);
+
         // output commands
         for (int i = 0; i < required_actions_count; i++) {
-            struct body *organism = get_map(organisms, i);
+            struct command *orders = ((struct body *)get_map(organisms, i))->orders;
 
             // Write an action using printf(). DON'T FORGET THE TRAILING \n
             // To debug: fprintf(stderr, "Debug messages...\n");
 
-            if (organism->target)
+            if (orders->target)
                 printf("GROW %d %d %d %s %s",
-                        organism->from_organ->organ_id,
-                        organism->at_location->x,
-                        organism->at_location->y,
-                        type_str[organism->new_organ_type],
-                        dir_str[organism->new_organ_dir]);
+                        orders->from_organ->organ_id,
+                        orders->at_location->x,
+                        orders->at_location->y,
+                        type_str[orders->new_organ_type],
+                        dir_str[orders->new_organ_dir]);
             else
                 printf("WAIT");
             if (turn == 1)
