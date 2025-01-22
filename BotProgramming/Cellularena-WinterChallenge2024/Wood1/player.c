@@ -15,8 +15,9 @@
  * Wood 1 League
  */
 
-// comment-out the DEBUG macro when the program is ready
-#define DEBUG
+// comment-out the following macros when the program is ready
+#define DEBUG_WORLD_BUILDING
+#define DEBUG_AI
 
 #define TYPE    \
 X(A)            \
@@ -802,7 +803,6 @@ int compare_closest(struct body *body, struct entity *e0, struct entity *e1)
             - body->distance_to_organism[INDEX(e1)];
 }
 
-
 void find_min_distance(int *data[2], struct entity *e)
 {
     int *closest_index = data[0];
@@ -816,14 +816,9 @@ void find_min_distance(int *data[2], struct entity *e)
 }
 
 // tabulate my organism's disposition to engage
-// (closest_sources stores the index in the same fashion as closest_index in opp_body)
 void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
-        int (*closest_sources)[4], struct hash_map *organisms, struct hash_map *opp_organisms)
+        struct hash_map *organisms, struct hash_map *opp_organisms)
 {
-    for (int i = 0; i < organisms->size; i++)
-        for (enum type j = A; j <= D; j++)
-            closest_sources[i][j] = NO_INDEX;
-
     for (int x = 0; x < width; x++)
         for (int y = 0; y < height; y++) {
             int index = EXP1(x, y);
@@ -831,7 +826,7 @@ void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
             for (int i = 0; i < organisms->size; i++) {
                 struct body *body = get_map(organisms, i);
 
-                    // calculate the closest points to my organisms...
+                // calculate the closest points to my organisms
                 for (struct node *n = body->body_parts->node; n; n = n->next) {
                     struct entity *ebody = n->content;
                     int d = DISTANCES(ebody->x, ebody->y, x, y);
@@ -839,15 +834,6 @@ void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
                     if (d < body->distance_to_organism[index]) {
                         body->distance_to_organism[index] = d;
                         body->closest_organ[index] = ebody;
-                    }
-                    // ... and locations of the closest protein sources
-                    if (tiles[x][y].status & ISPROTEIN) {
-                        int closest_index = closest_sources[i][tiles[x][y].t];
-                        int min_d = closest_index == NO_INDEX ? w[FORBIDDEN] :
-                                body->distance_to_organism[closest_index];
-
-                        if (d < min_d)
-                            closest_sources[i][tiles[x][y].t] = index;
                     }
                 }
                 // fill-in lists of interesting tiles
@@ -1097,7 +1083,7 @@ int main()
         // calcultate entity values and active protein sources
         assess_tiles(tiles, organs, sources);
 
-#ifdef DEBUG
+#ifdef DEBUG_WORLD_BUILDING
         // quality control -- print-out of the remarkable entities
         print_entities(tiles);
 #endif
@@ -1111,7 +1097,7 @@ int main()
         // establish vertex-entity relationships of possible nodes in new routes
         struct array_v *vertices = generate_vertices(tiles);
 
-#ifdef DEBUG
+#ifdef DEBUG_WORLD_BUILDING
         // quality control -- print-out the weights on restricted tiles
         print_restrictions();
 #endif
@@ -1119,11 +1105,10 @@ int main()
         // shortest path calculator of potential new routes
         Floyd_Warshall(tiles, vertices, wdistances, previous);
 
-        int (*closest_sources)[4] = malloc(n_organisms[MY] * 4 * sizeof(int));
         // my organisms appraise their surroundings
-        inspect_surroundings(tiles, wdistances, closest_sources, organisms, opp_organisms);
+        inspect_surroundings(tiles, wdistances, organisms, opp_organisms);
 
-#ifdef DEBUG
+#ifdef DEBUG_WORLD_BUILDING
         // quality control -- print-out of all organisms
         print_organisms(organisms, opp_organisms);
 #endif
@@ -1145,7 +1130,7 @@ int main()
             new_organ_type = TENTACLE;
             new_organ_dir = face_to(target, vulnerable_organs->node->content);
             path = path_FW(tiles, previous, my_organ->x, my_organ->y, target->x, target->y);
-#ifdef DEBUG
+#ifdef DEBUG_WORLD_BUILDING
             print_path(path);
 #endif
         }
@@ -1156,7 +1141,7 @@ int main()
                     target->organ_id, target->x, target->y);
             my_organ = target->closest_organ;
             path = path_FW(tiles, previous, my_organ->x, my_organ->y, target->x, target->y);
-#ifdef DEBUG
+#ifdef DEBUG_WORLD_BUILDING
             print_path(path);
 #endif
             target = path->node->next->content;
@@ -1206,7 +1191,6 @@ int main()
         clear_map(organisms, (void (*)(void *))del_inner_body);
         clear_map(opp_organisms, (void (*)(void *))del_opp_inner_body);
         free(vertices);
-        free(closest_sources);
     }
 
     free(tiles);
