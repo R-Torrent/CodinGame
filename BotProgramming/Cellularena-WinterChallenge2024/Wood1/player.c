@@ -126,7 +126,7 @@ void add_front_list(struct list *list, void *content)
     }
 }
 
-void reorder_list(void *data, struct list *list,
+void sort_list(void *data, struct list *list,
         int (*compare)(void *, void *, void *))
 {
     if (list)
@@ -874,12 +874,12 @@ void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
                     opp_body->body_parts, (void (*)(void *, void *))find_min_distance);
         }
 
-        reorder_list(NULL, body->accessible_organs,
+        sort_list(NULL, body->accessible_organs,
                 (int (*)(void *, void *, void *))compare_highest_value);
-        reorder_list(body->root, body->vacant_slots,
+        sort_list(body->root, body->vacant_slots,
                 (int (*)(void *, void *, void *))compare_closest_from_myroot);
         for (struct list **l = body->free_sources; l - body->free_sources < 4; l++)
-            reorder_list(body, *l, (int (*)(void *, void *, void *))compare_closest);
+            sort_list(body, *l, (int (*)(void *, void *, void *))compare_closest);
     }
 }
 
