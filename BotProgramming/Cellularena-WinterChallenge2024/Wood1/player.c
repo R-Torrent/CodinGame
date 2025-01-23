@@ -115,6 +115,30 @@ struct hash_map {
     struct node **array;
 };
 
+struct node *new_node(int key, void *content, struct node *next)
+{
+    struct node *new = malloc(sizeof(struct node));
+
+    new->key = key;
+    new->content = content;
+    new->next = next;
+
+    return new;
+}
+
+void delete_nodes(struct node **pn, void (*del_content)(void *))
+{
+    struct node *next;
+
+    while (*pn) {
+            next = (*pn)->next;
+            if (del_content)
+                del_content((*pn)->content);
+            free(*pn);
+            *pn = next;
+    }
+}
+
 struct list *create_list(void)
 {
     struct list *list = malloc(sizeof(struct list));
@@ -128,12 +152,8 @@ struct list *create_list(void)
 void add_front_list(struct list *list, void *content)
 {
     if (list) {
-        struct node *new = malloc(sizeof(struct node));
-
-        new->content = content;
-        new->next = list->node;
+        list->node = new_node(list->node ? ++list->node->key : 0, content, list->node);
         list->size++;
-        list->node = new;
     }
 }
 
@@ -184,15 +204,8 @@ void iterate_over_list(void *data, struct list *list,
 
 void clear_list(struct list *list, void (*del_content)(void *))
 {
-    struct node *next;
-
     if (list) {
-        for (struct node **pn = &list->node; *pn; *pn = next) {
-            next = (*pn)->next;
-            if (del_content)
-                del_content((*pn)->content);
-            free(*pn);
-        }
+        delete_nodes(&list->node, del_content);
         list->size = 0;
     }
 }
@@ -226,13 +239,9 @@ int hash(int key, int size)
 void put_map(struct hash_map *map, int key, void *content)
 {
     if (map) {
-        struct node *new = malloc(sizeof(struct node));
         int index = hash(key, map->size);
 
-        new->key = key;
-        new->content = content;
-        new->next = map->array[index];
-        map->array[index] = new;
+        map->array[index] = new_node(key, content, map->array[index]);
     }
 }
 
@@ -251,14 +260,7 @@ void clear_map(struct hash_map *map, void (*del_content)(void *))
 {
     if (map)
         for (struct node **pn = map->array; pn - map->array < map->size; pn++)
-            while (*pn) {
-                struct node *next = (*pn)->next;
-
-                if (del_content)
-                    del_content((*pn)->content);
-                free(*pn);
-                *pn = next;
-            }
+            delete_nodes(pn, del_content);
 }
 
 void delete_map(struct hash_map **pmap, void (*del_content)(void *))
