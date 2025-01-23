@@ -1,3 +1,13 @@
+/**
+ * TODO :
+ * Add to the bodies new lists with line-of-sight from a SPORER or a vacant slot to each of the four
+ * !MY_HARVESTED sources or enemy organisms. Spore must land two actual tiles away from the target. The
+ * same organism could have a varios potential locations for the SPORER or where to land. Minimize
+ * (first) the wdistance from new ROOT to target; maxmize (second) the length of the shot.
+ * 
+ * Multi-agent AI : https://en.wikipedia.org/wiki/Multi-agent_system
+ **/
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -6,7 +16,7 @@
  * Grow and multiply your organisms to end up larger than your opponent.
  **/
 
- /*
+/*
  * Cellularena - Winter Challenge 2024
  * Contest
  */
