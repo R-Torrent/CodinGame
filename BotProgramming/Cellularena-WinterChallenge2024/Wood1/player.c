@@ -155,7 +155,9 @@ void remove_from_list(struct list *list, void *content)
     if (!list || !content)
         return;
 
-    struct node **pn = &list->node, *next;
+    struct node *next;
+    struct node **pn = &list->node;
+
     while (*pn) {
         next = (*pn)->next;
         if ((*pn)->content == content) {
@@ -184,15 +186,24 @@ void clear_list(struct list *list, void (*del_content)(void *))
 {
     struct node *next;
 
-    if (list)
-        for (struct node *n = list->node; n; n = next) {
-            next = n->next;
+    if (list) {
+        for (struct node **pn = &list->node; *pn; *pn = next) {
+            next = (*pn)->next;
             if (del_content)
-                del_content(n->content);
-            free(n);
-            n = next;
+                del_content((*pn)->content);
+            free(*pn);
         }
-    free(list);
+        list->size = 0;
+    }
+}
+
+void delete_list(struct list **plist, void (*del_content)(void *))
+{
+    if (*plist) {
+        clear_list(*plist, del_content);
+        free(*plist);
+        *plist = NULL;
+    }
 }
 
 struct hash_map *create_hash_map(int size)
@@ -242,12 +253,21 @@ void clear_map(struct hash_map *map, void (*del_content)(void *))
         for (struct node **pn = map->array; pn - map->array < map->size; pn++)
             while (*pn) {
                 struct node *next = (*pn)->next;
+
                 if (del_content)
                     del_content((*pn)->content);
                 free(*pn);
                 *pn = next;
-            };
-    free(map);
+            }
+}
+
+void delete_map(struct hash_map **pmap, void (*del_content)(void *))
+{
+    if (*pmap) {
+        clear_map(*pmap, del_content);
+        free(*pmap);
+        *pmap = NULL;
+    }
 }
 
 // tile-related auxiliary functions  --------------------------------------------------------------------
@@ -492,7 +512,7 @@ struct array_v *generate_vertices(struct entity tiles[width][height])
     struct vertex **p = array->array;
     for (struct node *node = temp->node; node; node = node->next)
         *p++ = node->content;
-    clear_list(temp, NULL);
+    delete_list(&temp, NULL);
 
     return array;
 }
@@ -918,22 +938,22 @@ enum dir face_to(struct entity *subject, struct entity *object)
 
 void del_inner_body(struct body *body)
 {
-    clear_list(body->body_parts, NULL);
+    delete_list(&body->body_parts, NULL);
     free(body->distance_to_organism);
     free(body->closest_organ);
-    clear_list(body->accessible_organs, NULL);
-    clear_list(body->vacant_slots, NULL);
+    delete_list(&body->accessible_organs, NULL);
+    delete_list(&body->vacant_slots, NULL);
     for (struct list **l = body->free_sources; l - body->free_sources < 4; l++)
-            clear_list(*l, NULL);
-    clear_list(body->orders->path, NULL);
+            delete_list(l, NULL);
+    delete_list(&body->orders->path, NULL);
     free(body->orders);
     free(body);
 }
 
 void del_opp_inner_body(struct opp_body *opp_body)
 {
-    clear_list(opp_body->body_parts, NULL);
-    clear_map(opp_body->closest_index, free);
+    delete_list(&opp_body->body_parts, NULL);
+    delete_map(&opp_body->closest_index, free);
     free(opp_body);
 }
 
@@ -968,8 +988,9 @@ void print_accessible(struct body *body, struct entity *e)
     int index = INDEX(e);
     struct entity *co = body->closest_organ[index];
 
-    fprintf(stderr, "  opp_organ %d (%d, %d) accessible from organ %d (%d, %d) at distance %d\n",
-            e->organ_id, e->x, e->y, co->organ_id, co->x, co->y, body->distance_to_organism[index]);
+    fprintf(stderr, "  opp_organ %d (%d, %d) [val. %d] accessible from organ %d (%d, %d) at wdist %d\n",
+            e->organ_id, e->x, e->y, e->value, co->organ_id, co->x, co->y,
+            body->distance_to_organism[index]);
 }
 
 void print_source(struct body *body, struct entity *e)
@@ -977,7 +998,7 @@ void print_source(struct body *body, struct entity *e)
     int index = INDEX(e);
     struct entity *co = body->closest_organ[index];
 
-    fprintf(stderr, "  source %s (%d, %d) accessible from organ %d (%d, %d) at distance %d\n",
+    fprintf(stderr, "  source %s (%d, %d) accessible from organ %d (%d, %d) at wdistance %d\n",
             type_str[e->t], e->x, e->y, co->organ_id, co->x, co->y, body->distance_to_organism[index]);
 }
 
@@ -1197,9 +1218,9 @@ int main()
         }
 
         // clear arrays, lists, and maps
-        clear_map(organs, NULL);
-        clear_map(organisms, (void (*)(void *))del_inner_body);
-        clear_map(opp_organisms, (void (*)(void *))del_opp_inner_body);
+        delete_map(&organs, NULL);
+        delete_map(&organisms, (void (*)(void *))del_inner_body);
+        delete_map(&opp_organisms, (void (*)(void *))del_opp_inner_body);
         free(vertices);
     }
 
