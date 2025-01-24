@@ -521,11 +521,11 @@ struct array_v *generate_vertices(struct entity tiles[width][height])
 
 #define RESTRICTIONS    \
 Y(NORMAL)               \
+Y(FORBIDDEN)            \
 Y(RESTRICTED_A)         \
 Y(RESTRICTED_B)         \
 Y(RESTRICTED_C)         \
 Y(RESTRICTED_D)         \
-Y(FORBIDDEN)            \
 Y(REWARDED_A)           \
 Y(REWARDED_B)           \
 Y(REWARDED_C)           \
@@ -547,10 +547,11 @@ char *restrictions_str[] = {
 int w[sizeof(restrictions_str) / sizeof(restrictions_str[0])];
 
 // base weights for the pathing
-#define BNORMAL     1
-#define BRESTRICTED 2
-#define BFORBIDDEN  1000
-#define BREWARDED   -1
+#define BNORMAL     10
+#define BFORBIDDEN  10000
+// deviations
+#define BRESTRICTED +15
+#define BREWARDED   -2
 
 void weigh_restriction_levels(int turn, int sources[3][4])
 {
@@ -563,15 +564,15 @@ void weigh_restriction_levels(int turn, int sources[3][4])
     }
 
     w[NORMAL]       = BNORMAL;
-    w[RESTRICTED_A] = BNORMAL + (BRESTRICTED - BNORMAL) * prec[MY][A];
-    w[RESTRICTED_B] = BNORMAL + (BRESTRICTED - BNORMAL) * prec[MY][B];
-    w[RESTRICTED_C] = BNORMAL + (BRESTRICTED - BNORMAL) * prec[MY][C];
-    w[RESTRICTED_D] = BNORMAL + (BRESTRICTED - BNORMAL) * prec[MY][D];
+    w[RESTRICTED_A] = BNORMAL + BRESTRICTED * prec[MY][A];
+    w[RESTRICTED_B] = BNORMAL + BRESTRICTED * prec[MY][B];
+    w[RESTRICTED_C] = BNORMAL + BRESTRICTED * prec[MY][C];
+    w[RESTRICTED_D] = BNORMAL + BRESTRICTED * prec[MY][D];
     w[FORBIDDEN]    = BFORBIDDEN;
-    w[REWARDED_A]   = BNORMAL + (BREWARDED - BNORMAL) * prec[OPP][A];
-    w[REWARDED_B]   = BNORMAL + (BREWARDED - BNORMAL) * prec[OPP][B];
-    w[REWARDED_C]   = BNORMAL + (BREWARDED - BNORMAL) * prec[OPP][C];
-    w[REWARDED_D]   = BNORMAL + (BREWARDED - BNORMAL) * prec[OPP][D];
+    w[REWARDED_A]   = BNORMAL + BREWARDED * prec[OPP][A];
+    w[REWARDED_B]   = BNORMAL + BREWARDED * prec[OPP][B];
+    w[REWARDED_C]   = BNORMAL + BREWARDED * prec[OPP][C];
+    w[REWARDED_D]   = BNORMAL + BREWARDED * prec[OPP][D];
 }
 
 // Floyd_Warshall algorithm functions  ------------------------------------------------------------------
@@ -875,7 +876,7 @@ void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
                     else if (tiles[x][y].status & ISPROTEIN && !(tiles[x][y].status & MY_HARVESTED))
                         add_front_list(body->free_sources[tiles[x][y].t], &tiles[x][y]);
                 }
-                if (!(tiles[x][y].status & OCCUPIED) && body->distance_to_organism[index] == 1)
+                if (!(tiles[x][y].status & OCCUPIED) && body->distance_to_organism[index] == w[NORMAL])
                     add_front_list(body->vacant_slots, &tiles[x][y]);
             }
         }
