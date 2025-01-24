@@ -411,7 +411,7 @@ void determine_status(struct entity tiles[width][height])
 }
 
 void assess_tiles(struct entity tiles[width][height],
-        struct hash_map *organs, int sources[3][4])
+        struct hash_map *organs, int sources[3][4], struct list *free_sources[4])
 {
     for (int x = 0; x < width; x++)
         for (int y = 0; y < height; y++) {
@@ -426,8 +426,10 @@ void assess_tiles(struct entity tiles[width][height],
             if (tiles[x][y].status & ISPROTEIN) {
                 if (tiles[x][y].status & MY_HARVESTED)
                     sources[MY][t]++;
-                else
+                else {
                     sources[FREE][t]++;
+                    add_front_list(free_sources[t], &tiles[x][y]);
+                }
                 if (tiles[x][y].status & OPP_HARVESTED)
                     sources[OPP][t]++;
             }
@@ -564,15 +566,15 @@ void weigh_restriction_levels(int turn, int sources[3][4])
     }
 
     w[NORMAL]       = BNORMAL;
-    w[RESTRICTED_A] = BNORMAL + BRESTRICTED * prec[MY][A];
-    w[RESTRICTED_B] = BNORMAL + BRESTRICTED * prec[MY][B];
-    w[RESTRICTED_C] = BNORMAL + BRESTRICTED * prec[MY][C];
-    w[RESTRICTED_D] = BNORMAL + BRESTRICTED * prec[MY][D];
     w[FORBIDDEN]    = BFORBIDDEN;
-    w[REWARDED_A]   = BNORMAL + BREWARDED * prec[OPP][A];
-    w[REWARDED_B]   = BNORMAL + BREWARDED * prec[OPP][B];
-    w[REWARDED_C]   = BNORMAL + BREWARDED * prec[OPP][C];
-    w[REWARDED_D]   = BNORMAL + BREWARDED * prec[OPP][D];
+    w[RESTRICTED_A] = BRESTRICTED * prec[MY][A];
+    w[RESTRICTED_B] = BRESTRICTED * prec[MY][B];
+    w[RESTRICTED_C] = BRESTRICTED * prec[MY][C];
+    w[RESTRICTED_D] = BRESTRICTED * prec[MY][D];
+    w[REWARDED_A]   = BREWARDED * prec[OPP][A];
+    w[REWARDED_B]   = BREWARDED * prec[OPP][B];
+    w[REWARDED_C]   = BREWARDED * prec[OPP][C];
+    w[REWARDED_D]   = BREWARDED * prec[OPP][D];
 }
 
 // Floyd_Warshall algorithm functions  ------------------------------------------------------------------
@@ -962,7 +964,7 @@ void del_opp_inner_body(struct opp_body *opp_body)
 
 // debugging assists  -----------------------------------------------------------------------------------
 
-void print_entities(struct entity tiles[width][height])
+void print_entities(struct entity tiles[width][height], struct list *free_sources[4])
 {
     for (int x = 0; x < width; x++)
         for (int y = 0; y < height; y++) {
@@ -974,15 +976,23 @@ void print_entities(struct entity tiles[width][height])
                     x, y, type_str[e->t], dir_str[e->d], owner_str[e->o], e->organ_id,
                     e->organ_parent_id, e->organ_root_id, e->status, e->value);
         }
+
+    fprintf(stderr, "FREE sources -");
+    for (enum type t = A; t <= D; t++)
+        fprintf(stderr, " %s: %d", type_str[t], free_sources[t]->size);
+    putc('\n', stderr);
 }
 
 void print_restrictions(void)
 {
-    for (enum restrictions r = NORMAL; r < FORBIDDEN; r++)
-        fprintf(stderr, "%s: %d ", restrictions_str[r], w[r]);
-    putc('\n', stderr);
-    for (enum restrictions r = FORBIDDEN; r < sizeof(restrictions_str) / sizeof(*restrictions_str); r++)
-        fprintf(stderr, "%s: %d ", restrictions_str[r], w[r]);
+    fprintf(stderr, "Base weights - %s: %d %s: %d\n", restrictions_str[NORMAL], w[NORMAL],
+            restrictions_str[FORBIDDEN], w[FORBIDDEN]);
+    fprintf(stderr, "Modifications to weights (cummulative for each endpoint of each path segment)-\n  ");
+    for (enum restrictions r = RESTRICTED_A; r <= RESTRICTED_D; r++)
+        fprintf(stderr, "%s: %+d ", restrictions_str[r], w[r]);
+    fprintf(stderr, "\n  ");
+    for (enum restrictions r = REWARDED_A; r <= REWARDED_D; r++)
+        fprintf(stderr, "%s: %+d ", restrictions_str[r], w[r]);
     putc('\n', stderr);
 }
 
@@ -1065,8 +1075,11 @@ int main()
     int my_proteins[4];
     int opp_proteins[4];
     int sources[3][4];
+    struct list *free_sources[4];
+    for (enum type t = A; t <= D; t++)
+        free_sources[t] = create_list();
     int n_organisms[2];
-    int *wdistances = malloc(NT * NT * sizeof(int)); // weighted distances of paths starting at my organs
+    int *wdistances = malloc(NT * NT * sizeof(int)); // weighted distances
     struct entity **previous = malloc(NT * NT * sizeof(struct entity *));
 
     init_grid(tiles);
@@ -1115,11 +1128,11 @@ int main()
         determine_status(tiles);
 
         // calcultate entity values and active protein sources
-        assess_tiles(tiles, organs, sources);
+        assess_tiles(tiles, organs, sources, free_sources);
 
 #ifdef DEBUG_WORLD_BUILDING
         // quality control -- print-out of the remarkable entities
-        print_entities(tiles);
+        print_entities(tiles, free_sources);
 #endif
 
         // ponderate the pathing restriction levels
@@ -1221,6 +1234,8 @@ int main()
         }
 
         // clear arrays, lists, and maps
+        for (enum type t = A; t <= D; t++)
+            clear_list(free_sources[t], NULL);
         delete_map(&organs, NULL);
         delete_map(&organisms, (void (*)(void *))del_inner_body);
         delete_map(&opp_organisms, (void (*)(void *))del_opp_inner_body);
@@ -1228,6 +1243,8 @@ int main()
     }
 
     free(tiles);
+    for (enum type t = A; t <= D; t++)
+        delete_list(free_sources + t, NULL);
     free(wdistances);
     free(previous);
 
