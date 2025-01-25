@@ -939,15 +939,17 @@ struct body *whose_body(struct hash_map *organisms, struct entity *e)
     return NULL;
 }
 
-struct spore {
-    // sporer shooting
+struct shooting_lane {
+    // shooting SPORER, NULL if none in place yet
     struct entity *sporer;
     // tile aimed at
     struct entity *place;
     // direction of shot
     enum dir d;
-    // length of shot
+    // shot length
     int l;
+    // wdistance of paths involved from the plcaing position to the target, and with the new SPORER
+    int wdistance;
 };
 
 struct container2 {
