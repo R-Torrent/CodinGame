@@ -3,7 +3,8 @@
  * Add to the bodies new lists with line-of-sight from a SPORER or a vacant slot to each of the four
  * !MY_HARVESTED sources or enemy organisms. Spore must land two actual tiles away from the target. The
  * same organism could have a varios potential locations for the SPORER or where to land. Minimize
- * (first) the wdistance from new ROOT to target; maxmize (second) the length of the shot.
+ * (first) the wdistance {from organ to new SPORER + from new ROOT to target}; maxmize (second) the
+ * length of the shot.
  * 
  * Multi-agent AI : https://en.wikipedia.org/wiki/Multi-agent_system
  **/
@@ -97,6 +98,8 @@ size_t determine_enum(char *options[], char *selection)
             return o - options;
 }
 
+#define NO_INDEX -1
+
 // linked list & hash map functions  --------------------------------------------------------------------
 
 struct node {
@@ -151,10 +154,22 @@ struct list *create_list(void)
 
 void add_front_list(struct list *list, void *content)
 {
+    int key = 0;
+
     if (list) {
-        list->node = new_node(list->node ? ++list->node->key : 0, content, list->node);
+        list->node = new_node(key++, content, list->node);
         list->size++;
+        for (struct node *n = list->node->next; n; n = n->next)
+            n->key = key++;
     }
+}
+
+void iterate_over_list(void *data, struct list *list,
+        void (*action)(void *, void *))
+{
+    if (list)
+        for (struct node *n = list->node; n; n = n->next)
+            action(data, n->content);
 }
 
 void sort_list(void *data, struct list *list,
@@ -190,16 +205,15 @@ void remove_from_list(struct list *list, void *content)
     }
 }
 
-void iterate_over_list(void *data, struct list *list,
-        void (*action)(void *, void *))
+// if predicate == NULL, returns index of the first occurrence of data in list
+int find_first_in_list(void *data, struct list *list, int (*predicate)(void *, void *))
 {
-    struct node *next;
-
     if (list)
-        for (struct node *n = list->node; n; n = next) {
-            next = n->next;
-            action(data, n->content);
-        }
+        for (struct node *n = list->node; n; n = n->next)
+            if (predicate && predicate(data, n->content) || !predicate && n->content == data)
+                return n->key;
+
+    return NO_INDEX;
 }
 
 void clear_list(struct list *list, void (*del_content)(void *))
@@ -733,8 +747,6 @@ struct opp_body {
     struct hash_map *closest_index;
 };
 
-#define NO_INDEX -1
-
 void populate_organisms(int n[2], struct hash_map **porganisms, struct hash_map **popp_organisms,
         struct hash_map *organs)
 {
@@ -755,7 +767,7 @@ void populate_organisms(int n[2], struct hash_map **porganisms, struct hash_map 
             }
         new->accessible_organs = create_list();
         new->vacant_slots = create_list();
-        for (struct list **l = new->free_sources; l - new->free_sources < 4; l++)
+        for (struct list **l = new->free_sources; l - new->free_sources <= D; l++)
             *l = create_list();
 
         put_map(*porganisms, i, new);
@@ -838,6 +850,23 @@ int compare_closest(struct body *body, struct entity *e0, struct entity *e1)
             - body->distance_to_organism[INDEX(e1)];
 }
 
+struct container1 {
+    int *wdistances;
+    struct body *body;
+    int x, y;
+    int index;
+};
+
+void closest_points(struct container1 *data, struct entity *e)
+{
+    int d = data->DISTANCES(e->x, e->y, data->x, data->y);
+
+    if (d < data->body->distance_to_organism[data->index]) {
+        data->body->distance_to_organism[data->index] = d;
+        data->body->closest_organ[data->index] = e;
+    }
+}
+
 void find_min_distance(int *data[2], struct entity *e)
 {
     int *closest_index = data[0];
@@ -850,7 +879,7 @@ void find_min_distance(int *data[2], struct entity *e)
         *closest_index = index;
 }
 
-// tabulate my organism's disposition to engage
+// tabulate my organism's disposition to engage directly
 void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
         struct hash_map *organisms, struct hash_map *opp_organisms)
 {
@@ -862,15 +891,9 @@ void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
                 struct body *body = get_map(organisms, i);
 
                 // calculate the closest points to my organisms
-                for (struct node *n = body->body_parts->node; n; n = n->next) {
-                    struct entity *ebody = n->content;
-                    int d = DISTANCES(ebody->x, ebody->y, x, y);
+                iterate_over_list(&(struct container1){wdistances, body, x, y, index},
+                        body->body_parts, (void (*)(void *, void *))closest_points);
 
-                    if (d < body->distance_to_organism[index]) {
-                        body->distance_to_organism[index] = d;
-                        body->closest_organ[index] = ebody;
-                    }
-                }
                 // fill-in lists of interesting tiles
                 if (body->distance_to_organism[index] < w[FORBIDDEN]) {
                     if (tiles[x][y].o == OPP)
@@ -899,9 +922,83 @@ void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
                 (int (*)(void *, void *, void *))compare_highest_value);
         sort_list(body->root, body->vacant_slots,
                 (int (*)(void *, void *, void *))compare_closest_from_myroot);
-        for (struct list **l = body->free_sources; l - body->free_sources < 4; l++)
+        for (struct list **l = body->free_sources; l - body->free_sources <= D; l++)
             sort_list(body, *l, (int (*)(void *, void *, void *))compare_closest);
     }
+}
+
+struct body *whose_body(struct hash_map *organisms, struct entity *e)
+{
+    for (int i = 0; i < organisms->size; i++) {
+        struct body *body = get_map(organisms, i);
+
+        if (find_first_in_list(e, body->body_parts, NULL) != NO_INDEX)
+            return body;
+    }
+
+    return NULL;
+}
+
+struct spore {
+    // sporer shooting
+    struct entity *sporer;
+    // tile aimed at
+    struct entity *place;
+    // direction of shot
+    enum dir d;
+    // length of shot
+    int l;
+};
+
+struct container2 {
+    void *tiles;
+    int *wdistances;
+    struct hash_map *organisms;
+};
+
+void check_place(struct container2 *data, int x, int y)
+{
+    struct entity (*tiles)[height] = (struct entity (*)[height])data->tiles;
+    int x1, y1;
+
+    if (x >=0 && x < width && y >= 0 && y < height && !(tiles[x][y].status & OCCUPIED)) {
+        // check for existing N sporers
+        for (y1 = y - 1; y1 < height && !(tiles[x][y1].status & OCCUPIED); y1++)
+            ;
+        if (y1 < height && tiles[x][y1].t == SPORER && tiles[x][y1].o == MY && tiles[x][y1].d == N)
+            ;
+    }
+}
+
+void aim_on_source(struct container2 *data, struct entity *target)
+{
+    // eight potential landing tiles for a spore
+    check_place(data, target->x, target->y - 2);
+    check_place(data, target->x - 1, target->y - 1);
+    check_place(data, target->x + 1, target->y - 1);
+    check_place(data, target->x - 2, target->y);
+    check_place(data, target->x + 2, target->y);
+    check_place(data, target->x - 1, target->y + 1);
+    check_place(data, target->x + 1, target->y + 1);
+    check_place(data, target->x, target->y + 2);
+
+ /*   
+    for (int i = 0; data->organisms->size; i++) {
+        struct body *body = get_map(data->organisms, i);
+
+
+    }
+*/
+
+}
+
+void aim_sporers(struct entity tiles[width][height], struct list *free_sources[4], int *wdistances,
+        struct hash_map *organisms, struct hash_map *opp_organisms)
+{
+    // aim on FREE (== !MY_HARVESTED) sources
+    for (enum type t = A; t <= D; t++)
+        iterate_over_list(&(struct container2){tiles, wdistances, organisms},
+                free_sources[t], (void (*)(void *, void *))aim_on_source);
 }
 
 // functions for the tactical overmind  -----------------------------------------------------------------
@@ -948,7 +1045,7 @@ void del_inner_body(struct body *body)
     free(body->closest_organ);
     delete_list(&body->accessible_organs, NULL);
     delete_list(&body->vacant_slots, NULL);
-    for (struct list **l = body->free_sources; l - body->free_sources < 4; l++)
+    for (struct list **l = body->free_sources; l - body->free_sources <= D; l++)
             delete_list(l, NULL);
     delete_list(&body->orders->path, NULL);
     free(body->orders);
@@ -1024,7 +1121,7 @@ void print_opponent(int my, struct body *body, int index)
                 co->organ_id, co->x, co->y, body->distance_to_organism[index]);
     }
     else
-        fprintf(stderr, "  no line-of-sight with MY_%d\n", my);
+        fprintf(stderr, "  no direct path from MY_%d\n", my);
 }
 
 void print_organisms(struct hash_map *organisms, struct hash_map *opp_organisms)
@@ -1037,7 +1134,7 @@ void print_organisms(struct hash_map *organisms, struct hash_map *opp_organisms)
                 o->accessible_organs->size, o->vacant_slots->size, o->free_sources[A]->size,
                 o->free_sources[B]->size, o->free_sources[C]->size, o->free_sources[D]->size);
         iterate_over_list(o, o->accessible_organs, (void (*)(void *, void *))print_accessible);
-        for (struct list **l = o->free_sources; l - o->free_sources < 4; l++)
+        for (struct list **l = o->free_sources; l - o->free_sources <= D; l++)
             iterate_over_list(o, *l, (void (*)(void *, void *))print_source);
     }
 
@@ -1152,8 +1249,11 @@ int main()
         // shortest path calculator of potential new routes
         Floyd_Warshall(tiles, vertices, wdistances, previous);
 
-        // my organisms appraise their surroundings
+        // my organisms appraise their surroundings for direct interactions
         inspect_surroundings(tiles, wdistances, organisms, opp_organisms);
+
+        // my organisms appraise their surroundings for ranged (spore) interactions
+        aim_sporers(tiles, free_sources, wdistances, organisms, opp_organisms);
 
 #ifdef DEBUG_WORLD_BUILDING
         // quality control -- print-out of all organisms
