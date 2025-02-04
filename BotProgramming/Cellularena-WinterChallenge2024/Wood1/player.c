@@ -102,25 +102,28 @@ size_t determine_enum(char *options[], char *selection)
 
 // linked list & hash map functions  --------------------------------------------------------------------
 
-struct node {
+typedef struct node_s {
     int key;
     void *content;
-    struct node *next;
-};
+    struct node_s *next;
+} node_t;
 
-struct list {
+typedef struct {
     int size;
-    struct node *node;
-};
+    node_t *node;
+    void (*del_content)(void *);
+} list_t;
 
-struct hash_map {
-    int size;
-    struct node **array;
-};
+typedef struct associative_array_s {
+    int capacity;
+    node_t **array;
+    void (*del_content)(void *);
+    int (*hash)(struct associative_array_s *, int);
+} hash_map_t, hash_set_t;
 
-struct node *new_node(int key, void *content, struct node *next)
+node_t *new_node(int key, void *content, node_t *next)
 {
-    struct node *new = malloc(sizeof(struct node));
+    node_t *new = malloc(sizeof(node_t));
 
     new->key = key;
     new->content = content;
@@ -129,9 +132,9 @@ struct node *new_node(int key, void *content, struct node *next)
     return new;
 }
 
-void delete_nodes(struct node **pn, void (*del_content)(void *))
+void delete_nodes(node_t **pn, void (*del_content)(void *))
 {
-    struct node *next;
+    node_t *next;
 
     while (*pn) {
             next = (*pn)->next;
@@ -142,42 +145,39 @@ void delete_nodes(struct node **pn, void (*del_content)(void *))
     }
 }
 
-struct list *create_list(void)
+list_t *create_list(void (*del_content)(void *))
 {
-    struct list *list = malloc(sizeof(struct list));
+    list_t *list = malloc(sizeof(list_t));
 
     list->size = 0;
     list->node = NULL;
+    list->del_content = del_content;
 
     return list;
 }
 
-void add_front_list(struct list *list, void *content)
+void add_front_list(list_t *list, void *content)
 {
-    int key = 0;
-
     if (list) {
-        list->node = new_node(key++, content, list->node);
+        list->node = new_node(0, content, list->node);
         list->size++;
-        for (struct node *n = list->node->next; n; n = n->next)
-            n->key = key++;
     }
 }
 
-void iterate_over_list(void *data, struct list *list,
+void iterate_over_list(void *data, list_t *list,
         void (*action)(void *, void *))
 {
     if (list)
-        for (struct node *n = list->node; n; n = n->next)
+        for (node_t *n = list->node; n; n = n->next)
             action(data, n->content);
 }
 
-void sort_list(void *data, struct list *list,
+void sort_list(void *data, list_t *list,
         int (*compare)(void *, void *, void *))
 {
     if (list)
-        for (struct node *n0 = list->node; n0 != NULL; n0 = n0->next)
-            for (struct node *n1 = n0->next; n1 != NULL; n1 = n1->next)
+        for (node_t *n0 = list->node; n0 != NULL; n0 = n0->next)
+            for (node_t *n1 = n0->next; n1 != NULL; n1 = n1->next)
                 if (compare(data, n0->content, n1->content) > 0) {
                     void *temp = n0->content;
                     n0->content = n1->content;
@@ -185,13 +185,13 @@ void sort_list(void *data, struct list *list,
                 }
 }
 
-void remove_from_list(struct list *list, void *content)
+void remove_from_list(list_t *list, void *content)
 {
     if (!list || !content)
         return;
 
-    struct node *next;
-    struct node **pn = &list->node;
+    node_t *next;
+    node_t **pn = &list->node;
 
     while (*pn) {
         next = (*pn)->next;
@@ -206,84 +206,132 @@ void remove_from_list(struct list *list, void *content)
 }
 
 // if predicate == NULL, returns index of the first occurrence of data in list
-int find_first_in_list(void *data, struct list *list, int (*predicate)(void *, void *))
+int find_first_in_list(void *data, list_t *list, int (*predicate)(void *, void *))
 {
     if (list)
-        for (struct node *n = list->node; n; n = n->next)
+        for (node_t *n = list->node; n; n = n->next)
             if (predicate && predicate(data, n->content) || !predicate && n->content == data)
-                return n->key;
+                return n - list->node;
 
     return NO_INDEX;
 }
 
-void clear_list(struct list *list, void (*del_content)(void *))
+void clear_list(list_t *list)
 {
     if (list) {
-        delete_nodes(&list->node, del_content);
+        delete_nodes(&list->node, list->del_content);
         list->size = 0;
     }
 }
 
-void delete_list(struct list **plist, void (*del_content)(void *))
+void delete_list(list_t **plist)
 {
     if (*plist) {
-        clear_list(*plist, del_content);
+        clear_list(*plist);
         free(*plist);
         *plist = NULL;
     }
 }
 
-struct hash_map *create_hash_map(int size)
+hash_map_t *create_hash_map(int capacity, void (*del_content)(void *),
+        int (*hash)(hash_map_t *, int))
 {
-    struct hash_map *map = malloc(sizeof(struct hash_map));
+    hash_map_t *map = malloc(sizeof(hash_map_t));
 
-    map->size = size;
-    map->array = malloc(size * sizeof(struct node *));
-    for (int i = 0; i < size; i++)
+    map->capacity = capacity;
+    map->array = malloc(capacity * sizeof(node_t *));
+    for (int i = 0; i < capacity; i++)
         map->array[i] = NULL;
+    map->del_content = del_content;
+    map->hash = hash;
 
     return map;
 }
 
-int hash(int key, int size)
+int default_hash(hash_map_t *map, int key)
 {
-    return key % size;
+    return key % map->capacity;
 }
 
-void put_map(struct hash_map *map, int key, void *content)
+node_t *get_node_map(hash_map_t *map, int key)
 {
-    if (map) {
-        int index = hash(key, map->size);
-
-        map->array[index] = new_node(key, content, map->array[index]);
-    }
-}
-
-void *get_map(struct hash_map *map, int key)
-{
-    if (map)
-        for (struct node *node = map->array[hash(key, map->size)];
+    if (map || key < 0)
+        for (node_t *node = map->array[map->hash(map, key)];
                 node; node = node->next)
             if (node->key == key)
-                return node->content;
+                return node;
 
     return NULL;
 }
 
-void clear_map(struct hash_map *map, void (*del_content)(void *))
+void *get_map(hash_map_t *map, int key)
 {
-    if (map)
-        for (struct node **pn = map->array; pn - map->array < map->size; pn++)
-            delete_nodes(pn, del_content);
+    node_t *node = get_node_map(map, key);
+
+    if (node)
+        return node->content;
+
+    return NULL;
 }
 
-void delete_map(struct hash_map **pmap, void (*del_content)(void *))
+// replaces old value if the key mapped some previous content
+void put_map(hash_map_t *map, int key, void *content)
+{
+    if (map) {
+        node_t *old = get_node_map(map, key);
+
+        if (old) {
+            if (map->del_content)
+                map->del_content(old->content);
+            old->content = content;
+        }
+        else {
+            int index = map->hash(map, key);
+
+            map->array[index] = new_node(key, content, map->array[index]);
+        }
+    }
+}
+
+int size_map(hash_map_t *map)
+{
+    int size = -1;
+
+    if (map) {
+        size = 0;
+        for (node_t **pn1 = map->array; pn1 - map->array < map->capacity; pn1++)
+            for (node_t *pn2 = *pn1; pn2; pn2 = pn2->next)
+                size++;
+    }
+
+    return size;
+}
+
+void clear_map(hash_map_t *map)
+{
+    if (map)
+        for (node_t **pn = map->array; pn - map->array < map->capacity; pn++)
+            delete_nodes(pn, map->del_content);
+}
+
+void delete_map(hash_map_t **pmap)
 {
     if (*pmap) {
-        clear_map(*pmap, del_content);
+        clear_map(*pmap);
         free(*pmap);
         *pmap = NULL;
     }
+}
+
+hash_set_t *create_hash_set(int capacity, void (*del_content)(void *),
+        int (*hash)(hash_set_t *, int))
+{
+    return create_hash_map(capacity, del_content, hash);
+}
+
+int add_set(hash_set_t *set, void *content)
+{
+    return 0;
 }
 
 // tile-related auxiliary functions  --------------------------------------------------------------------
@@ -425,7 +473,7 @@ void determine_status(struct entity tiles[width][height])
 }
 
 void assess_tiles(struct entity tiles[width][height],
-        struct hash_map *organs, int sources[3][4], struct list *free_sources[4])
+        hash_map_t *organs, int sources[3][4], list_t *free_sources[4])
 {
     for (int x = 0; x < width; x++)
         for (int y = 0; y < height; y++) {
@@ -470,7 +518,7 @@ struct array_v {
 // part of a new, clear and unbroken path set from one of my organs to some target
 struct array_v *generate_vertices(struct entity tiles[width][height])
 {
-    struct list *temp = create_list();
+    list_t *temp = create_list(NULL);
 
     for (int x = 0; x < width; x++)
         for (int y = 0; y < height; y++) {
@@ -528,9 +576,9 @@ struct array_v *generate_vertices(struct entity tiles[width][height])
 
     array->size = temp->size;
     struct vertex **p = array->array;
-    for (struct node *node = temp->node; node; node = node->next)
+    for (node_t *node = temp->node; node; node = node->next)
         *p++ = node->content;
-    delete_list(&temp, NULL);
+    delete_list(&temp);
 
     return array;
 }
@@ -698,13 +746,13 @@ void Floyd_Warshall(struct entity tiles[width][height], struct array_v *vertices
 }
 
 // shortest path reconstruction from the Floyd-Warshall alorithm
-struct list *path_FW(struct entity tiles[width][height],
+list_t *path_FW(struct entity tiles[width][height],
         struct entity **previous, int x1, int y1, int x2, int y2)
 {
     if (!PREVIOUS(x1, y1, x2, y2))
         return NULL;
 
-    struct list *path = create_list();
+    list_t *path = create_list(NULL);
 
     add_front_list(path, &tiles[x2][y2]);
     while (x1 != x2 || y1 != y2) {
@@ -722,7 +770,7 @@ struct list *path_FW(struct entity tiles[width][height],
 
 struct body {
     struct entity *root;
-    struct list *body_parts;
+    list_t *body_parts;
 
     // shortest distance to the organism...
     int *distance_to_organism;
@@ -730,9 +778,9 @@ struct body {
     struct entity **closest_organ;
 
     // tiles of interest
-    struct list *accessible_organs;
-    struct list *vacant_slots;
-    struct list *free_sources[4];
+    list_t *accessible_organs;
+    list_t *vacant_slots;
+    list_t *free_sources[4];
 
     // tactical commands
     struct command *orders;
@@ -740,24 +788,54 @@ struct body {
 
 struct opp_body {
     struct entity *root;
-    struct list *body_parts;
+    list_t *body_parts;
 
     // shortest distance to my organs
     // (stores the simple index in the distance_to_organism and closest_organ matrices of body)
-    struct hash_map *closest_index;
+    hash_map_t *closest_index;
 };
 
-void populate_organisms(int n[2], struct hash_map **porganisms, struct hash_map **popp_organisms,
-        struct hash_map *organs)
+struct command {
+    struct entity *target;
+    struct entity *from_organ;
+    struct entity *at_location;
+    enum type new_organ_type;
+    enum dir new_organ_dir;
+    list_t *path;
+};
+
+void del_inner_body(struct body *body)
 {
-    *porganisms = create_hash_map(n[MY]);
-    *popp_organisms = create_hash_map(n[OPP]);
+    delete_list(&body->body_parts);
+    free(body->distance_to_organism);
+    free(body->closest_organ);
+    delete_list(&body->accessible_organs);
+    delete_list(&body->vacant_slots);
+    for (list_t **l = body->free_sources; l - body->free_sources <= D; l++)
+            delete_list(l);
+    delete_list(&body->orders->path);
+    free(body->orders);
+    free(body);
+}
+
+void del_opp_inner_body(struct opp_body *opp_body)
+{
+    delete_list(&opp_body->body_parts);
+    delete_map(&opp_body->closest_index);
+    free(opp_body);
+}
+
+void populate_organisms(int n[2], hash_map_t **porganisms, hash_map_t **popp_organisms,
+        hash_map_t *organs)
+{
+    *porganisms = create_hash_map(n[MY], (void (*)(void *))del_inner_body, default_hash);
+    *popp_organisms = create_hash_map(n[OPP], (void (*)(void *))del_opp_inner_body, default_hash);
 
     // my_organisms
     for (int i = 0; i < n[MY]; i++) {
         struct body *new = malloc(sizeof(struct body));
 
-        new->body_parts = create_list();
+        new->body_parts = create_list(NULL);
         new->distance_to_organism = malloc(NT * sizeof(int));
         new->closest_organ = malloc(NT * sizeof(struct entity *));
         for (int x = 0; x < width; x++)
@@ -765,10 +843,10 @@ void populate_organisms(int n[2], struct hash_map **porganisms, struct hash_map 
                 new->distance_to_organism[EXP1(x, y)] = w[FORBIDDEN];
                 new->closest_organ[EXP1(x, y)] = NULL;
             }
-        new->accessible_organs = create_list();
-        new->vacant_slots = create_list();
-        for (struct list **l = new->free_sources; l - new->free_sources <= D; l++)
-            *l = create_list();
+        new->accessible_organs = create_list(NULL);
+        new->vacant_slots = create_list(NULL);
+        for (list_t **l = new->free_sources; l - new->free_sources <= D; l++)
+            *l = create_list(NULL);
 
         put_map(*porganisms, i, new);
     }
@@ -777,8 +855,8 @@ void populate_organisms(int n[2], struct hash_map **porganisms, struct hash_map 
     for (int i = 0; i < n[OPP]; i++) {
         struct opp_body *new = malloc(sizeof(struct opp_body));
 
-        new->body_parts = create_list();
-        new->closest_index = create_hash_map(n[MY]);
+        new->body_parts = create_list(NULL);
+        new->closest_index = create_hash_map(n[MY], free, default_hash);
         for (int j = 0; j < n[MY]; j++) {
             int *index = malloc(sizeof(int));
 
@@ -792,7 +870,7 @@ void populate_organisms(int n[2], struct hash_map **porganisms, struct hash_map 
 
     // establish the root organs
     int key_organism[2] = {0, 0};
-    for (int i = 0; i < organs->size; i++) {
+    for (int i = 0; i < organs->capacity; i++) {
         struct entity *entity = get_map(organs, i);
 
         if (entity && entity->t == ROOT) {
@@ -804,7 +882,7 @@ void populate_organisms(int n[2], struct hash_map **porganisms, struct hash_map 
     }
 
     // fill-in the body parts
-    for (int i = 0; i < organs->size; i++) {
+    for (int i = 0; i < organs->capacity; i++) {
         struct entity *entity = get_map(organs, i);
 
         if (entity) {
@@ -881,13 +959,13 @@ void find_min_distance(int *data[2], struct entity *e)
 
 // tabulate my organism's disposition to engage directly
 void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
-        struct hash_map *organisms, struct hash_map *opp_organisms)
+        hash_map_t *organisms, hash_map_t *opp_organisms)
 {
     for (int x = 0; x < width; x++)
         for (int y = 0; y < height; y++) {
             int index = EXP1(x, y);
 
-            for (int i = 0; i < organisms->size; i++) {
+            for (int i = 0; i < organisms->capacity; i++) {
                 struct body *body = get_map(organisms, i);
 
                 // calculate the closest points to my organisms
@@ -906,11 +984,11 @@ void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
             }
         }
 
-    for (int i = 0; i < organisms->size; i++) {
+    for (int i = 0; i < organisms->capacity; i++) {
         struct body *body = get_map(organisms, i);
 
         // figure the index of the closest distance to all opponents
-        for (int j = 0; j < opp_organisms->size; j++) {
+        for (int j = 0; j < opp_organisms->capacity; j++) {
             struct opp_body *opp_body = get_map(opp_organisms, j);
             int *closest_index = get_map(opp_body->closest_index, i);
 
@@ -922,14 +1000,14 @@ void inspect_surroundings(struct entity tiles[width][height], int *wdistances,
                 (int (*)(void *, void *, void *))compare_highest_value);
         sort_list(body->root, body->vacant_slots,
                 (int (*)(void *, void *, void *))compare_closest_from_myroot);
-        for (struct list **l = body->free_sources; l - body->free_sources <= D; l++)
+        for (list_t **l = body->free_sources; l - body->free_sources <= D; l++)
             sort_list(body, *l, (int (*)(void *, void *, void *))compare_closest);
     }
 }
 
-struct body *whose_body(struct hash_map *organisms, struct entity *e)
+struct body *whose_body(hash_map_t *organisms, struct entity *e)
 {
-    for (int i = 0; i < organisms->size; i++) {
+    for (int i = 0; i < organisms->capacity; i++) {
         struct body *body = get_map(organisms, i);
 
         if (find_first_in_list(e, body->body_parts, NULL) != NO_INDEX)
@@ -955,7 +1033,7 @@ struct shooting_lane {
 struct container2 {
     void *tiles;
     int *wdistances;
-    struct hash_map *organisms;
+    hash_map_t *organisms;
 };
 
 void check_place(struct container2 *data, int x, int y)
@@ -985,7 +1063,7 @@ void aim_on_source(struct container2 *data, struct entity *target)
     check_place(data, target->x, target->y + 2);
 
  /*   
-    for (int i = 0; data->organisms->size; i++) {
+    for (int i = 0; data->organisms->capacity; i++) {
         struct body *body = get_map(data->organisms, i);
 
 
@@ -994,8 +1072,8 @@ void aim_on_source(struct container2 *data, struct entity *target)
 
 }
 
-void aim_sporers(struct entity tiles[width][height], struct list *free_sources[4], int *wdistances,
-        struct hash_map *organisms, struct hash_map *opp_organisms)
+void aim_sporers(struct entity tiles[width][height], list_t *free_sources[4], int *wdistances,
+        hash_map_t *organisms, hash_map_t *opp_organisms)
 {
     // aim on FREE (== !MY_HARVESTED) sources
     for (enum type t = A; t <= D; t++)
@@ -1005,25 +1083,16 @@ void aim_sporers(struct entity tiles[width][height], struct list *free_sources[4
 
 // functions for the tactical overmind  -----------------------------------------------------------------
 
-struct command {
-    struct entity *target;
-    struct entity *from_organ;
-    struct entity *at_location;
-    enum type new_organ_type;
-    enum dir new_organ_dir;
-    struct list *path;
-};
-
-void order_organisms(struct hash_map *organisms)
+void order_organisms(hash_map_t *organisms)
 {
-    for (int i = 0; i < organisms->size; i++) {
+    for (int i = 0; i < organisms->capacity; i++) {
         struct command *orders = malloc(sizeof(struct command));
 
         ((struct body *)get_map(organisms, i))->orders = orders;
         orders->target = orders->from_organ = orders->at_location = NULL;
         orders->new_organ_type = BASIC;
         orders->new_organ_dir = N;
-        orders->path = create_list();
+        orders->path = create_list(NULL);
     }
 }
 
@@ -1038,32 +1107,9 @@ enum dir face_to(struct entity *subject, struct entity *object)
     return X;
 }
 
-// clean-up operations  ---------------------------------------------------------------------------------
-
-void del_inner_body(struct body *body)
-{
-    delete_list(&body->body_parts, NULL);
-    free(body->distance_to_organism);
-    free(body->closest_organ);
-    delete_list(&body->accessible_organs, NULL);
-    delete_list(&body->vacant_slots, NULL);
-    for (struct list **l = body->free_sources; l - body->free_sources <= D; l++)
-            delete_list(l, NULL);
-    delete_list(&body->orders->path, NULL);
-    free(body->orders);
-    free(body);
-}
-
-void del_opp_inner_body(struct opp_body *opp_body)
-{
-    delete_list(&opp_body->body_parts, NULL);
-    delete_map(&opp_body->closest_index, free);
-    free(opp_body);
-}
-
 // debugging assists  -----------------------------------------------------------------------------------
 
-void print_entities(struct entity tiles[width][height], struct list *free_sources[4])
+void print_entities(struct entity tiles[width][height], list_t *free_sources[4])
 {
     for (int x = 0; x < width; x++)
         for (int y = 0; y < height; y++) {
@@ -1126,9 +1172,9 @@ void print_opponent(int my, struct body *body, int index)
         fprintf(stderr, "  no direct path from MY_%d\n", my);
 }
 
-void print_organisms(struct hash_map *organisms, struct hash_map *opp_organisms)
+void print_organisms(hash_map_t *organisms, hash_map_t *opp_organisms)
 {
-    for (int i = 0; i < organisms->size; i++) {
+    for (int i = 0; i < organisms->capacity; i++) {
         struct body *o = get_map(organisms, i);
 
         fprintf(stderr, "MY_%d: root_id:%d organs:%d acc.tiles:%d vac.tiles:%d"
@@ -1136,16 +1182,16 @@ void print_organisms(struct hash_map *organisms, struct hash_map *opp_organisms)
                 o->accessible_organs->size, o->vacant_slots->size, o->free_sources[A]->size,
                 o->free_sources[B]->size, o->free_sources[C]->size, o->free_sources[D]->size);
         iterate_over_list(o, o->accessible_organs, (void (*)(void *, void *))print_accessible);
-        for (struct list **l = o->free_sources; l - o->free_sources <= D; l++)
+        for (list_t **l = o->free_sources; l - o->free_sources <= D; l++)
             iterate_over_list(o, *l, (void (*)(void *, void *))print_source);
     }
 
-    for (int i = 0; i < opp_organisms->size; i++) {
+    for (int i = 0; i < opp_organisms->capacity; i++) {
         struct opp_body *o = get_map(opp_organisms, i);
 
         fprintf(stderr, "OPP_%d: root_id:%d organs:%d\n",
                 i, o->root->organ_id, o->body_parts->size);
-        for (int j = 0; j < organisms->size; j++)
+        for (int j = 0; j < organisms->capacity; j++)
             print_opponent(j, get_map(organisms, j), *(int *)get_map(o->closest_index, j));
     }
 }
@@ -1156,7 +1202,7 @@ void print_coords(void *data, struct entity *e)
     fprintf(stderr, "(%d, %d) ", e->x, e->y);
 }
 
-void print_path(struct list *path)
+void print_path(list_t *path)
 {
     iterate_over_list(NULL, path, (void (*)(void *, void *))print_coords);
     putc('\n', stderr);
@@ -1174,9 +1220,9 @@ int main()
     int my_proteins[4];
     int opp_proteins[4];
     int sources[3][4];
-    struct list *free_sources[4];
+    list_t *free_sources[4];
     for (enum type t = A; t <= D; t++)
-        free_sources[t] = create_list();
+        free_sources[t] = create_list(NULL);
     int n_organisms[2];
     int *wdistances = malloc(NT * NT * sizeof(int)); // weighted distances
     struct entity **previous = malloc(NT * NT * sizeof(struct entity *));
@@ -1186,13 +1232,13 @@ int main()
     // game loop
     for (int turn = 1; turn <= 100; turn++) {
         reset_grid(tiles);
-        struct hash_map *organisms, *opp_organisms;
+        hash_map_t *organisms, *opp_organisms;
         memset(sources, 0, 12 * sizeof(int));
         memset(n_organisms, 0, 2 * sizeof(int));
  
         int entity_count;
         scanf("%d", &entity_count);
-        struct hash_map *organs = create_hash_map(entity_count);
+        hash_map_t *organs = create_hash_map(entity_count, NULL, default_hash);
         for (int i = 0; i < entity_count; i++) {
             int x, y;
             scanf("%d%d", &x, &y);
@@ -1337,16 +1383,16 @@ int main()
 
         // clear arrays, lists, and maps
         for (enum type t = A; t <= D; t++)
-            clear_list(free_sources[t], NULL);
-        delete_map(&organs, NULL);
-        delete_map(&organisms, (void (*)(void *))del_inner_body);
-        delete_map(&opp_organisms, (void (*)(void *))del_opp_inner_body);
+            clear_list(free_sources[t]);
+        delete_map(&organs);
+        delete_map(&organisms);
+        delete_map(&opp_organisms);
         free(vertices);
     }
 
     free(tiles);
     for (enum type t = A; t <= D; t++)
-        delete_list(free_sources + t, NULL);
+        delete_list(free_sources + t);
     free(wdistances);
     free(previous);
 
