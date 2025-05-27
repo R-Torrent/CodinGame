@@ -16,6 +16,8 @@ using namespace std;
 int h;
 int w;
 
+#define INDEX(A, B) ( (A) * w + (B) )
+
 struct Cell {
 
 	int r;
@@ -23,68 +25,86 @@ struct Cell {
 	int gold;
 	bool visited;
 
-	Cell(int r, int c): r(r), c(c), gold(0), visited(false) { }
+	Cell(int r = 0, int c = 0): r(r), c(c), gold(0), visited(false) { }
 
 };
 
 struct CellMap {
 
-	Cell map[][w];
+	Cell *map;
 
 	CellMap() { map = new Cell[h * w]; }
 
 	CellMap(const CellMap& other): CellMap() {
-		for (int i = 0; i < h; i++) {
-			for (int j = 0; j < w; j++) {
-				
-			
+		for (int i = 0; i < h; i++)
+			for (int j = 0; j < w; j++)
+				map[INDEX(i, j)] = other.map[INDEX(i, j)];
 	}
 
-}
+	~CellMap() { delete[] map; }
 
+};
 
-int check_neigbors(Cell (*const map)[w], Cell& current)
+int checkNeighbors(CellMap& cellMap, Cell& current)
 {
 	current.visited = true;
-	int local_gold = current.gold;
 
-	if (current.r > 1 && !map[r - 1][current.c].visited) {
-		Cell (*const map)[w] = new Cell[
-		check_neighbors(map, map[r - 1][current.c]
+	int up, dw, lf, rt;
+	up = dw = lf = rt = 0;
+
+	if (current.r > 0 && !cellMap.map[INDEX(current.r - 1, current.c)].visited) {
+		CellMap next(cellMap);
+		up = checkNeighbors(next, next.map[INDEX(current.r - 1, current.c)]);
+	}
+	if (current.r < h - 1 && !cellMap.map[INDEX(current.r + 1, current.c)].visited) {
+		CellMap next(cellMap);
+		dw = checkNeighbors(next, next.map[INDEX(current.r + 1, current.c)]);
+	}
+	if (current.c > 0 && !cellMap.map[INDEX(current.r, current.c - 1)].visited) {
+		CellMap next(cellMap);
+		lf = checkNeighbors(next, next.map[INDEX(current.r, current.c - 1)]);
+	}
+	if (current.c < w - 1 && !cellMap.map[INDEX(current.r, current.c + 1)].visited) {
+		CellMap next(cellMap);
+		rt = checkNeighbors(next, next.map[INDEX(current.r, current.c + 1)]);
+	}
+
+	if (up >= dw && up >= lf && up >= rt)
+		return current.gold + up;
+	if (dw >= up && dw >= lf && dw >= rt)
+		return current.gold + dw;
+	if (lf >= up && lf >= dw && lf >= rt)
+		return current.gold + lf;
+	return current.gold + rt;
 }
 
 int main()
 {
 	cin >> h >> w; cin.ignore();
-	Cell (*const map)[w] = new Cell[h * w];
+
+	CellMap cellMap;
 	Cell *current;
 
 	for (int i = 0; i < h; i++) {
 		string row;
 
 		getline(cin, row);
-		for (Cell *cell = map[i]; cell - map[i] < w; cell++) {
-			*cell = Cell(i, j);
+		for (int j = 0; j < w; j++) {
+			Cell *cell = &cellMap.map[INDEX(i, j)];
+            *cell = Cell(i, j);
 			char c;
 
 			switch (c = row.at(j)) {
 			case 'X': current = cell; // fall through
-			case '#': cell->visited = true; break;
 			case ' ': break;
+            case '#': cell->visited = true; break;
 			default: cell->gold = c - '0';
 			}
 		}
 	}
 
-	int amount = 0;
-
-	check_neigbors(map, *current);
-
-
 // Write an answer using cout. DON'T FORGET THE "<< endl"
 // To debug: cerr << "Debug messages..." << endl;
 
-	cout << "answer" << endl;
-
-	delete[] map;
+	cout << checkNeighbors(cellMap, *current)  << endl;
 }
