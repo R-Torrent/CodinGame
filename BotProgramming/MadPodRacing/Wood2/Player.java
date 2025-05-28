@@ -1,4 +1,4 @@
-package BotProgramming.MadPotRacing.Wood2;
+package BotProgramming.MadPodRacing.Wood2;
 
 import java.util.Scanner;
 

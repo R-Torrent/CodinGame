@@ -1,4 +1,4 @@
-package BotProgramming.MadPotRacing.Wood1;
+package BotProgramming.MadPodRacing.Wood1;
 
 import java.util.ArrayList;
 import java.util.List;

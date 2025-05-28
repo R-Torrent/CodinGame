@@ -1,4 +1,4 @@
-package BotProgramming.MadPotRacing.Wood3;
+package BotProgramming.MadPodRacing.Wood3;
 
 import java.util.*;
 
