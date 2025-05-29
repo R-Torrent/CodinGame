@@ -341,10 +341,6 @@ char *dir_str[] = {
 };
 #undef Y
 
-// ownership flags
-#define MINE 01
-#define OPPT 02
-
 size_t determine_enum(char *options[], char *selection)
 {
 	for (char **o = options; ; o++)
@@ -352,7 +348,6 @@ size_t determine_enum(char *options[], char *selection)
 			return o - options;
 	// no error control!
 }
-
 
 // status flags for the tiles
 // if A, B, C, D, or EMPTY then 0, 1 otherwise
@@ -369,37 +364,39 @@ size_t determine_enum(char *options[], char *selection)
 #define ISORGAN       0040
 // is a protein source
 #define ISPROTEIN     0100
+// ownership; is mine
+#define MINE          0200
+// ownership; is opponent's
+#define OPPT          0400
 
 struct vertex {
-    // orientation of the vertex
-    enum dir d;
-    // tile where this vertex lies
-    struct entity *e;
-    // adjacent vertices
-    struct vertex *a[4];
+	// orientation of the vertex
+	enum dir d;
+	// tile where this vertex lies
+	struct entity *e;
+	// adjacent vertices
+	struct vertex *a[4];
 };
 
 // record kept of all tiles
-struct entity {
-    // grid coordinates
-    int x;
-    int y;
-    // A, B, C, D, EMPTY, WALL, ROOT, BASIC, TENTACLE, HARVESTER, SPORER
-    enum type t;
-    // MY if our organ, OPP if enemy organ, FREE if neither
-    enum ownership o;
-    // id of this entity if it's an organ, 0 otherwise
-    int organ_id;
-    // N, E, S, W or X if not an organ
-    enum dir d;
-    int organ_parent_id;
-    int organ_root_id;
-    int status;
-    int value;
-    // N, E, S, W for lateral ending vertices in OCCUPIED tiles only;
-    // X for a central connecting vertex on an UNOCCUPIED tile
-    struct vertex v[5];
-};
+typedef struct entity {
+	// grid coordinates
+	int x;
+	int y;
+	// A, B, C, D, EMPTY, WALL, ROOT, BASIC, TENTACLE, HARVESTER, SPORER
+	enum type t;
+	// id of this entity if it's an organ, 0 otherwise
+	int organ_id;
+	// N, E, S, W or X if not an organ
+	enum dir d;
+	int organ_parent_id;
+	int organ_root_id;
+	unsigned status;
+	int value;
+	// N, E, S, W for lateral ending vertices in OCCUPIED tiles only;
+	// X for a central connecting vertex on an UNOCCUPIED tile
+	struct vertex v[5];
+} entity_t;
 
 // columns in the game grid
 int width;
@@ -414,30 +411,30 @@ int NT;
 #define INDEX1(a) EXP1((a)->x, (a)->y)
 #define INDEX2(a, b) EXP2((a)->x, (a)->y, (b)->x, (b)->y)
 
-int entity_hash(hash_set_t *set, void *entity)
+size_t entity_hash(hash_set_t *set, void *entity)
 {
-	return INDEX1((struct entity *)entity) % set->capacity;
+	return INDEX1((entity_t *)entity) % set->capacity;
 }
 
-void init_grid(struct entity tiles[width][height])
+void init_grid(entity_t tiles[width][height])
 {
-    for (int x = 0; x < width; x++)
-        for (int y = 0; y < height; y++) {
-            struct entity *e = &tiles[x][y];
+	for (int x = 0; x < width; x++)
+		for (int y = 0; y < height; y++) {
+			entity_t *e = &tiles[x][y];
 
-            e->x = x;
-            e->y = y;
-            e->v[N].d = N;
-            e->v[E].d = E;
-            e->v[S].d = S;
-            e->v[W].d = W;
-            e->v[X].d = X;
-            e->v[N].e = e;
-            e->v[E].e = e;
-            e->v[S].e = e;
-            e->v[W].e = e;
-            e->v[X].e = e;
-        }
+			e->x = x;
+			e->y = y;
+			e->v[N].d = N;
+			e->v[E].d = E;
+			e->v[S].d = S;
+			e->v[W].d = W;
+			e->v[X].d = X;
+			e->v[N].e = e;
+			e->v[E].e = e;
+			e->v[S].e = e;
+			e->v[W].e = e;
+			e->v[X].e = e;
+	}
 }
 
 void reset_grid(struct entity tiles[width][height])
@@ -447,7 +444,6 @@ void reset_grid(struct entity tiles[width][height])
             struct entity *e = &tiles[x][y];
 
             e->t = EMPTY;
-            e->o = FREE;
             e->organ_id = 0;
             e->d = X;
             e->organ_parent_id = 0;
