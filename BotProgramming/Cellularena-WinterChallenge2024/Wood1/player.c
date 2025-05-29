@@ -418,89 +418,70 @@ size_t entity_hash(hash_set_t *set, void *entity)
 
 void init_grid(entity_t tiles[width][height])
 {
-	for (int x = 0; x < width; x++)
-		for (int y = 0; y < height; y++) {
-			entity_t *e = &tiles[x][y];
-
-			e->x = x;
-			e->y = y;
-			e->v[N].d = N;
-			e->v[E].d = E;
-			e->v[S].d = S;
-			e->v[W].d = W;
-			e->v[X].d = X;
-			e->v[N].e = e;
-			e->v[E].e = e;
-			e->v[S].e = e;
-			e->v[W].e = e;
-			e->v[X].e = e;
+	for (entity_t *e = *tiles; e - *tiles < NT; e++) {
+		e->x = x;
+		e->y = y;
+		e->v[N].d = N;
+		e->v[E].d = E;
+		e->v[S].d = S;
+		e->v[W].d = W;
+		e->v[X].d = X;
+		e->v[N].e = e;
+		e->v[E].e = e;
+		e->v[S].e = e;
+		e->v[W].e = e;
+		e->v[X].e = e;
 	}
 }
 
-void reset_grid(struct entity tiles[width][height])
+void reset_grid(entity_t tiles[width][height])
 {
-    for (int x = 0; x < width; x++)
-        for (int y = 0; y < height; y++) {
-            struct entity *e = &tiles[x][y];
-
-            e->t = EMPTY;
-            e->organ_id = 0;
-            e->d = X;
-            e->organ_parent_id = 0;
-            e->organ_root_id = 0;
-            e->status = 0;
-            e->value = 0;
-        }
+	for (entity_t *e = *tiles; e - *tiles < NT; e++) {
+		e->t = EMPTY;
+		e->organ_id = 0;
+		e->d = X;
+		e->organ_parent_id = 0;
+		e->organ_root_id = 0;
+		e->status = 0;
+		e->value = 0;
+	}
 }
 
-void determine_status(struct entity tiles[width][height])
-{
-    for (int x = 0; x < width; x++)
-        for (int y = 0; y < height; y++) {
-            enum type t = tiles[x][y].t;
+#define STATUS(A, B, C, D)                                                                  \
+	if ((A) && tiles[B][C].d == D) {                                                        \        
+		if (tiles[B][C].t == HARVESTER)                                                     \ 
+			tiles[x][y].status |= tiles[B][C].status & MINE ? MY_HARVESTED : OPP_HARVESTED; \
+		else if (tiles[B][C].t == TENTACLE)                                                 \
+			tiles[x][y].status |= tiles[B][C].status & MINE ? PROTECTED : MENACED;          \
+	}
 
-            if (y < height - 1 && tiles[x][y + 1].d == N) {
-                if (tiles[x][y + 1].t == HARVESTER)
-                    tiles[x][y].status |= tiles[x][y + 1].o == MY ? MY_HARVESTED : OPP_HARVESTED;
-                else if (tiles[x][y + 1].t == TENTACLE)
-                    tiles[x][y].status |= tiles[x][y + 1].o == MY ? PROTECTED : MENACED;
-            }
-            if (x > 0 && tiles[x - 1][y].d == E) {
-                if (tiles[x - 1][y].t == HARVESTER)
-                    tiles[x][y].status |= tiles[x - 1][y].o == MY ? MY_HARVESTED : OPP_HARVESTED;
-                else if (tiles[x - 1][y].t == TENTACLE)
-                    tiles[x][y].status |= tiles[x - 1][y].o == MY ? PROTECTED : MENACED;
-            }
-            if (y > 0 && tiles[x][y - 1].d == S) {
-                if (tiles[x][y - 1].t == HARVESTER)
-                    tiles[x][y].status |= tiles[x][y - 1].o == MY ? MY_HARVESTED : OPP_HARVESTED;
-                else if (tiles[x][y - 1].t == TENTACLE)
-                    tiles[x][y].status |= tiles[x][y - 1].o == MY ? PROTECTED : MENACED;
-            }
-            if (x < width - 1 && tiles[x + 1][y].d == W) {
-                if (tiles[x + 1][y].t == HARVESTER)
-                    tiles[x][y].status |= tiles[x + 1][y].o == MY ? MY_HARVESTED : OPP_HARVESTED;
-                else if (tiles[x + 1][y].t == TENTACLE)
-                    tiles[x][y].status |= tiles[x + 1][y].o == MY ? PROTECTED : MENACED;
-            }
-            if (t == A || t == B || t == C || t == D)
-                tiles[x][y].status |= ISPROTEIN;
-            else if (t == BASIC || t == HARVESTER || t == TENTACLE || t == SPORER || t == ROOT)
-                tiles[x][y].status |= ISORGAN | OCCUPIED;
-            else if (t == WALL)
-                tiles[x][y].status |= OCCUPIED;
-        }
+void determine_status(entity_t tiles[width][height])
+{
+	for (int x = 0; x < width; x++)
+		for (int y = 0; y < height; y++) {
+			STATUS(y < height - 1, x, y + 1, N);
+			STATUS(x > 0, x - 1, y, E);
+			STATUS(y > 0, x, y - 1, S);
+			STATUS(x < width - 1, x + 1, y, W);
+
+			enum type t = tiles[x][y].t;
+
+			if (t == A || t == B || t == C || t == D)
+				tiles[x][y].status |= ISPROTEIN;
+			else if (t == BASIC || t == HARVESTER || t == TENTACLE || t == SPORER || t == ROOT)
+				tiles[x][y].status |= ISORGAN | OCCUPIED;
+			else if (t == WALL)
+				tiles[x][y].status |= OCCUPIED;
+		}
 }
 
-void assess_tiles(struct entity tiles[width][height],
-        hash_map_t *entitites, int sources[3][4], list_t *free_sources[4])
+void assess_tiles(entity_t tiles[width][height], hash_map_t *entitites,
+		int sources[3][4], list_t *available_sources[4])
 {
-    for (int x = 0; x < width; x++)
-        for (int y = 0; y < height; y++) {
-			struct entity *entity = &tiles[x][y];
-            enum type t = entity->t;
+	for (entity_t *e = *tiles; e - *tiles < NT; e++) {
+		enum type t = entity->t;
 
-            // single-tile value = # of resorces required to build
+		// single-tile value = # of resorces required to build
             int value = t == BASIC ? 1 :
                     t == HARVESTER || t == TENTACLE || t == SPORER ? 2 :
                     t == ROOT ? 3 : 0;
