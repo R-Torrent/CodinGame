@@ -13,8 +13,9 @@
  * Multi-agent AI : https://en.wikipedia.org/wiki/Multi-agent_system
  **/
 
-#include <stdlib.h>
+#include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /**
@@ -34,28 +35,290 @@
 #define DEBUG_WORLD_BUILDING
 #define DEBUG_AI
 
-#define TYPE    \
-X(A)            \
-X(B)            \
-X(C)            \
-X(D)            \
-X(EMPTY)        \
-X(WALL)         \
-X(ROOT)         \
-X(BASIC)        \
-X(TENTACLE)     \
-X(HARVESTER)    \
+// linked list, hash map, and hash set functions  -------------------------------------------------------
+
+#define NO_INDEX -1
+
+typedef struct node_s {
+	void *key;
+	void *content;
+	struct node_s *next;
+} node_t;
+
+typedef struct {
+	int size;
+	node_t *node;
+	void (*del_content)(void *);
+} list_t;
+
+typedef struct associative_array_s {
+	size_t capacity;
+	size_t sizeof_key;
+	node_t **array;
+	void (*del_key)(void *);
+	void (*del_content)(void *);
+	size_t (*hash)(struct associative_array_s *, void *);
+	int (*equals)(void *, void *, size_t);
+} hash_map_t, hash_set_t;
+
+node_t *new_node(void *key, void *content, node_t *next)
+{
+	node_t *new = malloc(sizeof(node_t));
+
+	new->key = key;
+	new->content = content;
+	new->next = next;
+
+	return new;
+}
+
+void delete_nodes(node_t **pn, void (*del_key)(void *), void (*del_content)(void *))
+{
+	node_t *next;
+
+	while (*pn) {
+		next = (*pn)->next;
+		if (del_key)
+			del_key((*pn)->key);
+		if (del_content)
+			del_content((*pn)->content);
+		free(*pn);
+		*pn = next;
+	}
+}
+
+list_t *create_list(void (*del_content)(void *))
+{
+	list_t *list = malloc(sizeof(list_t));
+
+	list->size = 0;
+	list->node = NULL;
+	list->del_content = del_content;
+
+	return list;
+}
+
+void add_front_list(list_t *list, void *content)
+{
+	if (list) {
+		list->node = new_node(NULL, content, list->node);
+		list->size++;
+	}
+}
+
+void iterate_over_list(void *data, list_t *list, void (*action)(void *, void *))
+{
+	if (list)
+		for (node_t *n = list->node; n; n = n->next)
+			action(data, n->content);
+}
+
+void sort_list(void *data, list_t *list, int (*compare)(void *, void *, void *))
+{
+	if (list)
+		for (node_t *n0 = list->node; n0 != NULL; n0 = n0->next)
+			for (node_t *n1 = n0->next; n1 != NULL; n1 = n1->next)
+				if (compare(data, n0->content, n1->content) > 0) {
+					void *temp = n0->content;
+					n0->content = n1->content;
+					n1->content = temp;
+				}
+}
+
+// if predicate == NULL, returns index of the first occurrence of data in list
+ptrdiff_t find_first_in_list(void *data, list_t *list, int (*predicate)(void *, void *))
+{
+	if (list) {
+		ptrdiff_t f = 0;
+
+		for (node_t *n = list->node; n; n = n->next, f++)
+			if (predicate && predicate(data, n->content) || !predicate && data == n->content)
+				return f;
+	}
+
+	return NO_INDEX;
+}
+
+void clear_list(list_t *list)
+{
+	if (list) {
+		delete_nodes(&list->node, NULL, list->del_content);
+		list->size = 0;
+	}
+}
+
+void delete_list(list_t **plist)
+{
+	if (*plist) {
+		clear_list(*plist);
+		free(*plist);
+		*plist = NULL;
+	}
+}
+
+size_t default_hash(hash_map_t *map, void *key)
+{
+	return *(size_t *)key % map->capacity;
+}
+
+int default_equals(void *a, void *b, size_t size)
+{
+	return !memcmp(a, b, size);
+}
+
+hash_map_t *create_hash_map(size_t capacity, size_t sizeof_key, void (*del_key)(void *),
+        void (*del_content)(void *), size_t (*hash)(hash_map_t *, void *),
+        int (*equals)(void *, void *, size_t))
+{
+	hash_map_t *map = malloc(sizeof(hash_map_t));
+
+	map->capacity = capacity;
+	map->sizeof_key = sizeof_key;
+	map->array = malloc(capacity * sizeof(node_t *));
+	for (size_t i = 0; i < capacity; i++)
+		map->array[i] = NULL;
+	map->del_key = del_key;
+	map->del_content = del_content;
+	map->hash = !hash ? default_hash : hash;
+	map->equals = !equals ? default_equals : equals;
+
+	return map;
+}
+
+node_t *get_node_map(hash_map_t *map, void *key)
+{
+	if (map && key)
+		for (node_t *node = map->array[map->hash(map, key)]; node; node = node->next)
+			if (map->equals(node->key, key, map->sizeof_key))
+				return node;
+
+	return NULL;
+}
+
+void *get_map(hash_map_t *map, void *key)
+{
+	node_t *node = get_node_map(map, key);
+
+	if (node)
+		return node->content;
+
+	return NULL;
+}
+
+// replaces old value if the key mapped some previous content
+void put_map(hash_map_t *map, void *key, void *content)
+{
+	if (map && key) {
+		node_t *old = get_node_map(map, key);
+
+		if (old) {
+			if (map->del_key)
+				map->del_key(old->key);
+			if (map->del_content)
+				map->del_content(old->content);
+			old->key = key;
+			old->content = content;
+		}
+		else {
+			size_t index = map->hash(map, key);
+
+			map->array[index] = new_node(key, content, map->array[index]);
+		}
+	}
+}
+
+int size_map(hash_map_t *map)
+{
+	if (map) {
+		int size = 0;
+
+		for (node_t **pn = map->array; pn - map->array < map->capacity; pn++)
+			for (node_t *n = *pn; n; n = n->next)
+				size++;
+	}
+
+	return -1;
+}
+
+void clear_map(hash_map_t *map)
+{
+	if (map)
+		for (node_t **pn = map->array; pn - map->array < map->capacity; pn++)
+			delete_nodes(pn, map->del_key, map->del_content);
+}
+
+void delete_map(hash_map_t **pmap)
+{
+	if (*pmap) {
+		clear_map(*pmap);
+		free(*pmap);
+		*pmap = NULL;
+	}
+}
+
+hash_set_t *create_hash_set(int capacity, size_t sizeof_element, void (*del_element)(void *),
+		size_t (*hash)(hash_set_t *, void *), int (*equals)(void *, void *, size_t))
+{
+	return create_hash_map(capacity, sizeof_element, del_element, NULL, hash, equals);
+}
+
+int contains_set(hash_set_t *set, void *element)
+{
+	return get_node_map(set, element);
+}
+
+int add_set(hash_set_t *set, void *element)
+{
+	if (set && !contains_set(set, element)) {
+		size_t index = set->hash(set, element);
+
+		set->array[index] = new_node(element, NULL, set->array[index]);
+
+		return 1;
+	}
+
+	return 0;
+}
+
+int size_set(hash_set_t *set)
+{
+	return size_map(set);
+}
+
+void clear_set(hash_set_t *set)
+{
+	clear_map(set);
+}
+
+void delete_set(hash_set_t **pset)
+{
+	delete_map(pset);
+}
+
+// tile-related auxiliary functions  --------------------------------------------------------------------
+
+#define TYPE \
+X(A)         \
+X(B)         \
+X(C)         \
+X(D)         \
+X(EMPTY)     \
+X(WALL)      \
+X(ROOT)      \
+X(BASIC)     \
+X(TENTACLE)  \
+X(HARVESTER) \
 X(SPORER)
 
 #define X(a) a,
 enum type {
-    TYPE
+	TYPE
 };
 #undef X
 
 #define X(a) #a,
 char *type_str[] = {
-    TYPE
+	TYPE
 };
 #undef X
 
@@ -68,322 +331,28 @@ Y(X)
 
 #define Y(a) a,
 enum dir {
-    DIR
+	DIR
 };
 #undef Y
 
 #define Y(a) #a,
 char *dir_str[] = {
-    DIR
+	DIR
 };
 #undef Y
 
-#define OWNERSHIP   \
-Y(MY)               \
-Y(OPP)              \
-Y(FREE)
-
-#define Y(a) a,
-enum ownership {
-    OWNERSHIP
-};
-#undef Y
-
-#define Y(a) #a,
-char *owner_str[] = {
-    OWNERSHIP
-};
-#undef Y
+// ownership flags
+#define MINE 01
+#define OPPT 02
 
 size_t determine_enum(char *options[], char *selection)
 {
-    for (char **o = options; ; o++)
-        if (!strcmp(*o, selection))
-            return o - options;
+	for (char **o = options; ; o++)
+		if (!strcmp(*o, selection))
+			return o - options;
+	// no error control!
 }
 
-#define NO_INDEX -1
-
-// linked list, hash map, and hash set functions  -------------------------------------------------------
-
-typedef struct node_s {
-    void *key;
-    void *content;
-    struct node_s *next;
-} node_t;
-
-typedef struct {
-    int size;
-    node_t *node;
-    void (*del_content)(void *);
-} list_t;
-
-typedef struct associative_array_s {
-    int capacity;
-    size_t sizeof_key;
-    node_t **array;
-    void (*del_key)(void *);
-    void (*del_content)(void *);
-    int (*hash)(struct associative_array_s *, void *);
-    int (*equals)(void *, void *, size_t);
-} hash_map_t, hash_set_t;
-
-node_t *new_node(void *key, void *content, node_t *next)
-{
-    node_t *new = malloc(sizeof(node_t));
-
-    new->key = key;
-    new->content = content;
-    new->next = next;
-
-    return new;
-}
-
-void delete_nodes(node_t **pn, void (*del_key)(void *), void (*del_content)(void *))
-{
-    node_t *next;
-
-    while (*pn) {
-            next = (*pn)->next;
-            if (del_key)
-                del_key((*pn)->key);
-            if (del_content)
-                del_content((*pn)->content);
-            free(*pn);
-            *pn = next;
-    }
-}
-
-list_t *create_list(void (*del_content)(void *))
-{
-    list_t *list = malloc(sizeof(list_t));
-
-    list->size = 0;
-    list->node = NULL;
-    list->del_content = del_content;
-
-    return list;
-}
-
-void add_front_list(list_t *list, void *content)
-{
-    if (list) {
-        list->node = new_node(NULL, content, list->node);
-        list->size++;
-    }
-}
-
-void iterate_over_list(void *data, list_t *list,
-        void (*action)(void *, void *))
-{
-    if (list)
-        for (node_t *n = list->node; n; n = n->next)
-            action(data, n->content);
-}
-
-void sort_list(void *data, list_t *list,
-        int (*compare)(void *, void *, void *))
-{
-    if (list)
-        for (node_t *n0 = list->node; n0 != NULL; n0 = n0->next)
-            for (node_t *n1 = n0->next; n1 != NULL; n1 = n1->next)
-                if (compare(data, n0->content, n1->content) > 0) {
-                    void *temp = n0->content;
-                    n0->content = n1->content;
-                    n1->content = temp;
-                }
-}
-
-void remove_from_list(list_t *list, void *content)
-{
-    if (!list || !content)
-        return;
-
-    node_t *next;
-    node_t **pn = &list->node;
-
-    while (*pn) {
-        next = (*pn)->next;
-        if ((*pn)->content == content) {
-            list->size--;
-            free(*pn);
-            *pn = next;
-        }
-        else
-            pn = &next;
-    }
-}
-
-// if predicate == NULL, returns index of the first occurrence of data in list
-int find_first_in_list(void *data, list_t *list, int (*predicate)(void *, void *))
-{
-    if (list)
-        for (node_t *n = list->node; n; n = n->next)
-            if (predicate && predicate(data, n->content) || !predicate && n->content == data)
-                return n - list->node;
-
-    return NO_INDEX;
-}
-
-void clear_list(list_t *list)
-{
-    if (list) {
-        delete_nodes(&list->node, NULL, list->del_content);
-        list->size = 0;
-    }
-}
-
-void delete_list(list_t **plist)
-{
-    if (*plist) {
-        clear_list(*plist);
-        free(*plist);
-        *plist = NULL;
-    }
-}
-
-int default_hash(hash_map_t *map, void *key)
-{
-    return *(int *)key % map->capacity;
-}
-
-int default_equals(void *a, void *b, size_t size)
-{
-    return !memcmp(a, b, size);
-}
-
-hash_map_t *create_hash_map(int capacity, size_t sizeof_key, void (*del_key)(void *),
-        void (*del_content)(void *), int (*hash)(hash_map_t *, void *),
-        int (*equals)(void *, void *, size_t))
-{
-    hash_map_t *map = malloc(sizeof(hash_map_t));
-
-    map->capacity = capacity;
-    map->sizeof_key = sizeof_key;
-    map->array = malloc(capacity * sizeof(node_t *));
-    for (int i = 0; i < capacity; i++)
-        map->array[i] = NULL;
-    map->del_key = del_key;
-    map->del_content = del_content;
-    map->hash = !hash ? default_hash : hash;
-    map->equals = !equals ? default_equals : equals;
-
-    return map;
-}
-
-node_t *get_node_map(hash_map_t *map, void *key)
-{
-    if (map && key)
-        for (node_t *node = map->array[map->hash(map, key)];
-                node; node = node->next)
-            if (map->equals(node->key, key, map->sizeof_key))
-                return node;
-
-    return NULL;
-}
-
-void *get_map(hash_map_t *map, void *key)
-{
-    node_t *node = get_node_map(map, key);
-
-    if (node)
-        return node->content;
-
-    return NULL;
-}
-
-// replaces old value if the key mapped some previous content
-void put_map(hash_map_t *map, void *key, void *content)
-{
-    if (map) {
-        node_t *old = get_node_map(map, key);
-
-        if (old) {
-            if (map->del_key)
-                map->del_key(old->key);
-            if (map->del_content)
-                map->del_content(old->content);
-            old->key = key;
-            old->content = content;
-        }
-        else {
-            int index = map->hash(map, key);
-
-            map->array[index] = new_node(key, content, map->array[index]);
-        }
-    }
-}
-
-int size_map(hash_map_t *map)
-{
-    int size = -1;
-
-    if (map) {
-        size = 0;
-        for (node_t **pn1 = map->array; pn1 - map->array < map->capacity; pn1++)
-            for (node_t *pn2 = *pn1; pn2; pn2 = pn2->next)
-                size++;
-    }
-
-    return size;
-}
-
-void clear_map(hash_map_t *map)
-{
-    if (map)
-        for (node_t **pn = map->array; pn - map->array < map->capacity; pn++)
-            delete_nodes(pn, map->del_key, map->del_content);
-}
-
-void delete_map(hash_map_t **pmap)
-{
-    if (*pmap) {
-        clear_map(*pmap);
-        free(*pmap);
-        *pmap = NULL;
-    }
-}
-
-hash_set_t *create_hash_set(int capacity, size_t sizeof_element, void (*del_element)(void *),
-		int (*hash)(hash_set_t *, void *), int (*equals)(void *, void *, size_t))
-{
-    return create_hash_map(capacity, sizeof_element, del_element, NULL, hash, equals);
-}
-
-int contains_set(hash_set_t *set, void *element)
-{
-	return set && get_node_map(set, element);
-}
-
-int add_set(hash_set_t *set, void *element)
-{
-    if (set && !get_node_map(set, element)) {
-		int index = set->hash(set, element);
-
-		set->array[index] = new_node(element, NULL, set->array[index]);
-
-		return 1;
-    }
-
-    return 0;
-}
-
-int size_set(hash_set_t *set)
-{
-    return size_map(set);
-}
-
-void clear_set(hash_set_t *set)
-{
-   clear_map(set);
-}
-
-void delete_set(hash_set_t **pset)
-{
-    delete_map(pset);
-}
-
-// tile-related auxiliary functions  --------------------------------------------------------------------
 
 // status flags for the tiles
 // if A, B, C, D, or EMPTY then 0, 1 otherwise
