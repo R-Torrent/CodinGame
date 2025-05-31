@@ -454,7 +454,7 @@ void reset_grid(entity_t tiles[width][height])
 }
 
 #define STATUS(A, B, C, D)                                                                  \
-	if ((A) && tiles[B][C].d == D) {                                                        \
+	if (A && tiles[B][C].d == D) {                                                        \
 		if (tiles[B][C].t == HARVESTER)                                                     \
 			tiles[x][y].status |= tiles[B][C].status & MINE ? MY_HARVESTED : OPP_HARVESTED; \
 		else if (tiles[B][C].t == TENTACLE)                                                 \
@@ -481,7 +481,7 @@ void determine_status(entity_t tiles[width][height])
 		}
 }
 
-void assess_tiles(entity_t tiles[width][height], hash_map_t *entitites,
+void assess_tiles(entity_t tiles[width][height], hash_map_t *organs,
 		int harvested_sources[2][4], list_t *available_sources[4])
 {
 	for (entity_t *e = *tiles; e - *tiles < NT; e++) {
@@ -508,7 +508,7 @@ void assess_tiles(entity_t tiles[width][height], hash_map_t *entitites,
 
 			while (e1->organ_parent_id) {
 				e1->value += value;
-				e1 = get_map(entities, &e1->organ_parent_id);
+				e1 = get_map(organs, &e1->organ_parent_id);
 			}
 			e1->value += value;
 		}
@@ -602,7 +602,7 @@ int w[sizeof(restrictions_str) / sizeof(restrictions_str[0])];
 #define BRESTRICTED +15
 #define BREWARDED   -2
 
-void weigh_restriction_levels(int turn, int sources[3][4])
+void weigh_restriction_levels(int turn, int sources[2][4])
 {
 	// preciousness of the resource
 	int prec[2][4];
@@ -1136,7 +1136,7 @@ void print_entities(entity_t tiles[width][height], list_t *available_sources[4])
 				continue;
 			fprintf(stderr, "(%d, %d) %s %s owner:%s id:%d parent_id:%d root_id:%d status:%o value:%d\n",
 					x, y, type_str[e->t], dir_str[e->d],
-					owner_str[e->status & MINE ? MY : e->STATUS & OPPT ? OPP : FREE], e->organ_id,
+					owner_str[e->status & MINE ? MY : e->status & OPPT ? OPP : FREE], e->organ_id,
 					e->organ_parent_id, e->organ_root_id, e->status, e->value);
 		}
 
@@ -1239,7 +1239,7 @@ int main()
 	NT = width * height;
 
 	// memory allocation
-	struct entity (*tiles)[height] = malloc(NT * sizeof(struct entity));
+	entity_t (*tiles)[height] = malloc(NT * sizeof(entity_t));
 	int my_proteins[4];
 	int opp_proteins[4];
 	int harvested_sources[2][4];
@@ -1249,8 +1249,8 @@ int main()
 	int n_organisms[2];
 	// weighted and "taxicab" distances
 	int (*distances)[NT * NT * sizeof(int)] = malloc(2 * NT * NT * sizeof(int));
-	struct entity *(*previous)[NT * NT * sizeof(struct entity *)]
-			= malloc(2 * NT * NT * sizeof(struct entity *));
+	entity_t *(*previous)[NT * NT * sizeof(entity_t *)]
+			= malloc(2 * NT * NT * sizeof(entity_t *));
 
 	init_grid(tiles);
 
@@ -1258,27 +1258,27 @@ int main()
 	for (int turn = 1; turn <= 100; turn++) {
 		reset_grid(tiles);
 		hash_map_t *organisms, *opp_organisms;
-		memset(available_sources, 0, 8 * sizeof(int));
+		memset(harvested_sources, 0, 8 * sizeof(int));
 		memset(n_organisms, 0, 2 * sizeof(int));
  
 		int entity_count;
 		scanf("%d", &entity_count);
-		hash_map_t *entities = create_hash_map(entity_count, sizeof(int), NULL, NULL, NULL, NULL);
+		hash_map_t *organs = create_hash_map(entity_count, sizeof(int), NULL, NULL, NULL, NULL);
 		while (entity_count--) {
 			int x, y;
 			scanf("%d%d", &x, &y);
-			struct entity *entity = &tiles[x][y];
+			entity_t *entity = &tiles[x][y];
 			char type[33];
 			scanf("%s", type);
 			entity->t = (enum type)determine_enum(type_str, type);
 			int owner;
 			scanf("%d", &owner);
-			entity->o = owner == 1 ? MY : owner == 0 ? OPP : FREE;
+			entity->status |= owner == 1 ? MINE : owner == 0 ? OPPT : 0;
 			scanf("%d", &entity->organ_id);
 			if (entity->t == ROOT)
 				n_organisms[entity->o]++;
-			if (entity->o != FREE)
-				put_map(entities, &entity->organ_id, entity);
+			if (entity->status & (MINE | OPPT))
+				put_map(organs, &entity->organ_id, entity);
 			char organ_dir[2];
 			scanf("%s", organ_dir);
 			entity->d = (enum dir)determine_enum(dir_str, organ_dir);
@@ -1298,7 +1298,7 @@ int main()
 		determine_status(tiles);
 
 		// calcultate entity values and active protein sources
-		assess_tiles(tiles, entities, harvested_sources, available_sources);
+		assess_tiles(tiles, organs, harvested_sources, available_sources);
 
 #ifdef DEBUG_WORLD_BUILDING
 		// quality control -- print-out of the remarkable entities
@@ -1309,7 +1309,7 @@ int main()
 		weigh_restriction_levels(turn, harvested_sources);
 
 		// establish self-governing organisms
-		populate_organisms(n_organisms, &organisms, &opp_organisms, entities);
+		populate_organisms(n_organisms, &organisms, &opp_organisms, organs);
 
 		// establish vertex-entity relationships of possible nodes in new routes
 		struct array_v *vertices = generate_vertices(tiles);
@@ -1410,7 +1410,7 @@ int main()
 		// clear arrays, lists, and maps
 		for (enum type t = A; t <= D; t++)
 			clear_list(available_sources[t]);
-		delete_map(&entities);
+		delete_map(&organs);
 		delete_map(&organisms);
 		delete_map(&opp_organisms);
 		free(vertices);
