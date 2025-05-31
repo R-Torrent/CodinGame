@@ -432,16 +432,11 @@ void init_grid(entity_t tiles[width][height])
 	for (entity_t *e = *tiles; e - *tiles < NT; e++) {
 		e->x = x;
 		e->y = y;
-		e->v[N].d = N;
-		e->v[E].d = E;
-		e->v[S].d = S;
-		e->v[W].d = W;
-		e->v[X].d = X;
-		e->v[N].e = e;
-		e->v[E].e = e;
-		e->v[S].e = e;
-		e->v[W].e = e;
-		e->v[X].e = e;
+		for (enum dir d = N; d <= X; d++) {
+			e->v[d].d = d;
+			e->v[d].e = e;
+			e->v[d].a = { };
+		}
 	}
 }
 
@@ -525,61 +520,37 @@ struct array_v {
 	vertex_t *array[];
 };
 
+#define LINK_ADJACENT(A, B, C, D)                           \
+	e1 = &tiles[A][B];                                      \
+	v = &e->v[e->status & OCCUPIED ? C : X];                \
+	if (!(e1->status & OCCUPIED))                           \
+		v->a[C] = e1->v[X];                                 \
+	else if (e1->t != WALL &&                               \
+			(!(e->status & OCCUPIED) || e1->status & MINE)) \
+		v->a[C] = e1->v[D];
+
 // note that these are not all the vertices of the grid: only those that might be
 // part of a new, clear and unbroken path set from one of my organs to some target
 struct array_v *generate_vertices(entity_t tiles[width][height])
 {
 	list_t *temp = create_list(NULL);
 
-	for (int x = 0; x < width; x++)
-		for (int y = 0; y < height; y++) {
-			entity_t *e = &tiles[x][y];
+	for (int x = 1; x < width - 1; x++)
+		for (int y = 1; y < height - 1; y++) {
+			entity_t *e = &tiles[x][y], *e1;
 			vertex_t *v;
 
 			if (e->t == WALL)
 				continue;
-			if (e->status & OCCUPIED) {
-				if (y > 0 && !(tiles[x][y - 1].status & OCCUPIED)) {
-					v = &e->v[N];
-					v->a[0] = &tiles[x][y - 1].v[X];
-					v->a[1] = v->a[2] = v->a[3] = NULL;
-					add_front_list(temp, v);
+			LINK_ADJACENT(x, y - 1, N, S);
+			LINK_ADJACENT(x + 1, y, E, W);
+			LINK_ADJACENT(x, y + 1, S, N);
+			LINK_ADJACENT(x - 1, y, W, E);
+			for (enum dir d = N; d <= X; d++)
+				if (e->v->a[d]) {
+					add_front_list(temp, e->v);
+					break;
 				}
-				if (x < width - 1 && !(tiles[x + 1][y].status & OCCUPIED)) {
-					v = &e->v[E];
-					v->a[0] = &tiles[x + 1][y].v[X];
-					v->a[1] = v->a[2] = v->a[3] = NULL;
-					add_front_list(temp, v);
-				}
-				if (y < height - 1 && !(tiles[x][y + 1].status & OCCUPIED)) {
-					v = &e->v[S];
-					v->a[0] = &tiles[x][y + 1].v[X];
-					v->a[1] = v->a[2] = v->a[3] = NULL;
-					add_front_list(temp, v);
-				}
-				if (x > 0 && !(tiles[x - 1][y].status & OCCUPIED)) {
-					v = &e->v[W];
-					v->a[0] = &tiles[x - 1][y].v[X];
-					v->a[1] = v->a[2] = v->a[3] = NULL;
-					add_front_list(temp, v);
-				}
-			}
-			else {
-				v = &e->v[X];
-				v->a[0] = y == 0 ? NULL :
-				tiles[x][y - 1].status & OCCUPIED ? &tiles[x][y - 1].v[S] :
-				&tiles[x][y - 1].v[X];
-				v->a[1] = x == width - 1 ? NULL :
-				tiles[x + 1][y].status & OCCUPIED ? &tiles[x + 1][y].v[W] :
-				&tiles[x + 1][y].v[X];
-				v->a[2] = y == height - 1 ? NULL :
-				tiles[x][y + 1].status & OCCUPIED ? &tiles[x][y + 1].v[N] :
-				&tiles[x][y + 1].v[X];
-				v->a[3] = x == 0 ? NULL :
-				tiles[x - 1][y].status & OCCUPIED ? &tiles[x - 1][y].v[E] :
-				&tiles[x - 1][y].v[X];
-				add_front_list(temp, v);
-			}
 		}
 
 	struct array_v *array = malloc(sizeof(struct array_v) + temp->size * sizeof(vertex_t *));
