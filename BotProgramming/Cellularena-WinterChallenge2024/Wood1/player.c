@@ -311,9 +311,9 @@ X(HARVESTER) \
 X(SPORER)
 
 #define X(a) a,
-enum type {
+typedef enum {
 	TYPE
-};
+}  type_t;
 #undef X
 
 #define X(a) #a,
@@ -330,9 +330,9 @@ Y(W)        \
 Y(X)
 
 #define Y(a) a,
-enum dir {
+typedef enum {
 	DIR
-};
+} dir_t;
 #undef Y
 
 #define Y(a) #a,
@@ -382,7 +382,7 @@ size_t determine_enum(char *options[], char *selection)
 
 typedef struct vertex {
 	// orientation of the vertex
-	enum dir d;
+	dir_t d;
 	// tile where this vertex lies
 	struct entity *e;
 	// adjacent vertices
@@ -390,16 +390,16 @@ typedef struct vertex {
 } vertex_t;
 
 // record kept of all tiles
-typedef struct entity {
+typedef struct {
 	// grid coordinates
 	int x;
 	int y;
 	// A, B, C, D, EMPTY, WALL, ROOT, BASIC, TENTACLE, HARVESTER, SPORER
-	enum type t;
+	type_t t;
 	// id of this entity if it's an organ, 0 otherwise
 	int organ_id;
 	// N, E, S, W or X if not an organ
-	enum dir d;
+	dir_t d;
 	int organ_parent_id;
 	int organ_root_id;
 	unsigned status;
@@ -432,7 +432,7 @@ void init_grid(entity_t tiles[width][height])
 	for (entity_t *e = *tiles; e - *tiles < NT; e++) {
 		e->x = x;
 		e->y = y;
-		for (enum dir d = N; d <= X; d++) {
+		for (dir_t d = N; d <= X; d++) {
 			e->v[d].d = d;
 			e->v[d].e = e;
 			e->v[d].a = { };
@@ -470,7 +470,7 @@ void determine_status(entity_t tiles[width][height])
 			STATUS(y > 0, x, y - 1, S);
 			STATUS(x < width - 1, x + 1, y, W);
 
-			enum type t = tiles[x][y].t;
+			type_t t = tiles[x][y].t;
 
 			if (t == A || t == B || t == C || t == D)
 				tiles[x][y].status |= ISPROTEIN;
@@ -485,7 +485,7 @@ void assess_tiles(entity_t tiles[width][height], hash_map_t *organs,
 		int harvested_sources[2][4], list_t *available_sources[4])
 {
 	for (entity_t *e = *tiles; e - *tiles < NT; e++) {
-		enum type t = entity->t;
+		type_t t = entity->t;
 
 		// single-tile value = # of resorces required to build
 		int value = t == BASIC ? 1 :
@@ -546,7 +546,7 @@ struct array_v *generate_vertices(entity_t tiles[width][height])
 			LINK_ADJACENT(x + 1, y, E, W);
 			LINK_ADJACENT(x, y + 1, S, N);
 			LINK_ADJACENT(x - 1, y, W, E);
-			for (enum dir d = N; d <= X; d++)
+			for (dir_t d = N; d <= X; d++)
 				if (e->v->a[d]) {
 					add_front_list(temp, e->v);
 					break;
@@ -607,7 +607,7 @@ void weigh_restriction_levels(int turn, int harvested_sources[2][4])
 	// preciousness of the resource
 	int prec[2][4];
 
-	for (enum type t = A; t <= D; t++) {
+	for (type_t t = A; t <= D; t++) {
 		prec[MY][t] = (harvested_sources[MY][t] <= 1 ? 2 : 1) * (turn >= 97 ? 0 : 1);
 		prec[OPP][t] = (harvested_sources[OPP][t] <= 1 ? 2 : 1) * (turn == 100 ? 0 : 1);
 	}
@@ -643,7 +643,7 @@ void Floyd_Warshall(entity_t tiles[width][height], struct array_v *vertices, int
 	int (*distances_v)[NV] = malloc(NV * NV * sizeof(int));
 	vertex_t *(*previous_v)[NV] = malloc(NV * NV * sizeof(vertex_t *));
 
-	// initialization of Floyd-Warshall matrices & restrict areas ahead of a tentacle
+	// initialization of Floyd_Warshall matrices & restrict areas ahead of a tentacle
 	// (matrix indices range over all vertices)
 	for (int i = 0; i < NV; i++) {
 		vertex_t *vi = vertices->array[i];
@@ -692,6 +692,8 @@ void Floyd_Warshall(entity_t tiles[width][height], struct array_v *vertices, int
 				distances_v[i][j] = w[FORBIDDEN];
 				previous_v[i][j] = NULL;
 			}
+			distances_v[j][i] = distances_v[i][j];
+			previous_v[j][i] = vj;
 		}
 		// for each vertex
 		distances_v[i][i] = 0;
@@ -732,22 +734,18 @@ void Floyd_Warshall(entity_t tiles[width][height], struct array_v *vertices, int
 	free(previous_v);
 }
 
-// shortest path reconstruction from the Floyd-Warshall alorithm
-list_t *path_FW(struct entity tiles[width][height],
-		struct entity **prev, int x1, int y1, int x2, int y2)
+// shortest path reconstruction from the Floyd_Warshall algorithm
+list_t *path_FW(entity_t **prev, entity_t *e1, entity_t *e2)
 {
-	if (!prev[EXP2(x1, y1, x2, y2)])
+	if (!prev[INDEX2(e1, e2)])
 		return NULL;
 
 	list_t *path = create_list(NULL);
 
-	add_front_list(path, &tiles[x2][y2]);
-	while (x1 != x2 || y1 != y2) {
-		struct entity *e = prev[EXP2(x1, y1, x2, y2)];
-
-		x2 = e->x;
-		y2 = e->y;
-		add_front_list(path, &tiles[x2][y2]);
+	add_front_list(path, e2);
+	while (e1 != e2) {
+		e2 = prev[INDEX2(e1, e2)];
+		add_front_list(path, e2);
 	}
 
 	return path;
@@ -755,7 +753,7 @@ list_t *path_FW(struct entity tiles[width][height],
 
 // body-related auxiliary functions  --------------------------------------------------------------------
 
-struct body {
+typedef struct {
 	entity_t *root;
 	list_t *body_parts;
 
@@ -766,52 +764,53 @@ struct body {
 
 	// tiles of interest
 	list_t *accessible_organs;
-	list_t *free_sources[4];
+	list_t *accessible_sources[4];
 	hash_set_t *vacant_slots;
 
 	// tactical commands
 	struct command *orders;
-};
+} body_t;
 
-struct opp_body {
-	struct entity *root;
+typedef struct {
+	entity_t *root;
 	list_t *body_parts;
 
 	// shortest distance to my organs
 	// (stores the simple index in the distance_to_organism[WEIGHTED] and closest_organ[WEIGHTED]
 	// matrices of body, for each such body)
 	hash_map_t *closest_index;
-};
+} opp_body_t;
 
-struct command {
-	struct entity *target;
-	struct entity *from_organ;
-	struct entity *at_location;
-	enum type new_organ_type;
-	enum dir new_organ_dir;
+typedef struct command {
+	entity_t *target;
+	entity_t *from_organ;
+	entity *at_location;
+	type_t new_organ_type;
+	dir_t new_organ_dir;
 	list_t *path;
-};
+} command_t;
 
-void del_inner_body(void *body)
+void delete_commands(command_t *c)
 {
-	struct body *b = (struct body *)body;
+	delete_list(&c->path);
+	free(c);
+}
 
+void delete_body(body_t *b)
+{
 	delete_list(&b->body_parts);
 	free(b->distance_to_organism);
 	free(b->closest_organ);
 	delete_list(&b->accessible_organs);
-	delete_set(&b->vacant_slots);
-	for (list_t **l = b->free_sources; l - b->free_sources <= D; l++)
+	for (list_t **l = b->accessible_sources; l - b->accessible_sources <= D; l++)
 		delete_list(l);
-	delete_list(&b->orders->path);
-	free(b->orders);
+	delete_set(&b->vacant_slots);
+	delete_commands(b->orders);
 	free(body);
 }
 
-void del_opp_inner_body(void *opp_body)
+void del_opp_inner_body(opp_body_t *opp_b)
 {
-	struct opp_body *opp_b = (struct opp_body *)opp_body;
-
 	delete_list(&opp_b->body_parts);
 	delete_map(&opp_b->closest_index);
 	free(opp_body);
@@ -1043,7 +1042,7 @@ struct shooting_lane {
 	// tile aimed at
 	struct entity *place;
 	// direction of shot
-	enum dir d;
+	dir_t d;
 	// shot length
 	int l;
 	// wdistance of paths involved from the plcaing position to the target, and with the new SPORER
@@ -1096,7 +1095,7 @@ void aim_sporers(struct entity tiles[width][height], list_t *free_sources[4], in
 		hash_map_t *organisms, hash_map_t *opp_organisms)
 {
 	// aim on FREE (== !MY_HARVESTED) sources
-	for (enum type t = A; t <= D; t++)
+	for (type_t t = A; t <= D; t++)
 		iterate_over_list(&(struct container2){tiles, distances, organisms},
 				free_sources[t], (void (*)(void *, void *))aim_on_source);
 }
@@ -1116,7 +1115,7 @@ void order_organisms(hash_map_t *organisms)
 	}
 }
 
-enum dir face_to(struct entity *subject, struct entity *object)
+dir_t face_to(struct entity *subject, struct entity *object)
 {
 	if (object == subject)
 		return X;
@@ -1144,14 +1143,14 @@ void print_entities(entity_t tiles[width][height], list_t *available_sources[4])
 		}
 
 	fprintf(stderr, "Available (to me) sources ->");
-	for (enum type t = A; t <= D; t++)
+	for (type_t t = A; t <= D; t++)
 		fprintf(stderr, " %s: %d", type_str[t], available_sources[t]->size);
 	putc('\n', stderr);
 }
 
 void print_restrictions(size_t number_vertices)
 {
-	fprintf(stderr, "# of vertices for the Floyd-Warshall algorithm -> %zu\n", number_vertices);
+	fprintf(stderr, "# of vertices for the Floyd_Warshall algorithm -> %zu\n", number_vertices);
 	fprintf(stderr, "Base weights -> %s: %d %s: %d\n", restrictions_str[NORMAL], w[NORMAL],
 			restrictions_str[FORBIDDEN], w[FORBIDDEN]);
 	fprintf(stderr, "Modifications to weights "
@@ -1248,7 +1247,7 @@ int main()
 	int opp_proteins[4];
 	int harvested_sources[2][4];
 	list_t *available_sources[4];
-	for (enum type t = A; t <= D; t++)
+	for (type_t t = A; t <= D; t++)
 		available_sources[t] = create_list(NULL);
 	int n_organisms[2];
 	// weighted and "taxicab" distances
@@ -1274,7 +1273,7 @@ int main()
 			entity_t *entity = &tiles[x][y];
 			char type[33];
 			scanf("%s", type);
-			entity->t = (enum type)determine_enum(type_str, type);
+			entity->t = (type_t)determine_enum(type_str, type);
 			int owner;
 			scanf("%d", &owner);
 			entity->status |= owner == 1 ? MINE : owner == 0 ? OPPT : 0;
@@ -1285,7 +1284,7 @@ int main()
 				put_map(organs, &entity->organ_id, entity);
 			char organ_dir[2];
 			scanf("%s", organ_dir);
-			entity->d = (enum dir)determine_enum(dir_str, organ_dir);
+			entity->d = (dir_t)determine_enum(dir_str, organ_dir);
 			scanf("%d%d",&entity->organ_parent_id, &entity->organ_root_id);
 		}
 		// your protein stock
@@ -1319,7 +1318,7 @@ int main()
 		struct array_v *vertices = generate_vertices(tiles);
 
 #ifdef DEBUG_WORLD_BUILDING
-		// quality control -- print-out the weights on restricted tiles + # of vertices for F-W
+		// quality control -- print-out the weights on restricted tiles + # of vertices for F_W
 		print_restrictions(vertices->size);
 #endif
 
@@ -1342,8 +1341,8 @@ int main()
 		// strategy selection
 
 		struct entity *my_organ;
-		enum type new_organ_type = BASIC;
-		enum dir new_organ_dir = N;
+		type_t new_organ_type = BASIC;
+		dir_t new_organ_dir = N;
 		// primary objective: to establish a tentacle if possible on the highest-value target
 		if (vulnerable_organs->size) {
 			// select the highest-value enemy organ
@@ -1412,7 +1411,7 @@ int main()
 		}
 
 		// clear arrays, lists, and maps
-		for (enum type t = A; t <= D; t++)
+		for (type_t t = A; t <= D; t++)
 			clear_list(available_sources[t]);
 		delete_map(&organs);
 		delete_map(&organisms);
@@ -1421,7 +1420,7 @@ int main()
 	}
 
 	free(tiles);
-	for (enum type t = A; t <= D; t++)
+	for (type_t t = A; t <= D; t++)
 		delete_list(available_sources + t);
 	free(distances);
 	free(previous);
