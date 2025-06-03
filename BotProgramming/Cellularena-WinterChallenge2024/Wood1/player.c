@@ -568,16 +568,16 @@ struct array_v *generate_vertices(entity_t tiles[width][height])
 #define WEIGHTED 0
 #define TAXICAB  1
 
-#define RESTRICTIONS    \
-Y(NORMAL)               \
-Y(FORBIDDEN)            \
-Y(RESTRICTED_A)         \
-Y(RESTRICTED_B)         \
-Y(RESTRICTED_C)         \
-Y(RESTRICTED_D)         \
-Y(REWARDED_A)           \
-Y(REWARDED_B)           \
-Y(REWARDED_C)           \
+#define RESTRICTIONS \
+Y(NORMAL)            \
+Y(FORBIDDEN)         \
+Y(RESTRICTED_A)      \
+Y(RESTRICTED_B)      \
+Y(RESTRICTED_C)      \
+Y(RESTRICTED_D)      \
+Y(REWARDED_A)        \
+Y(REWARDED_B)        \
+Y(REWARDED_C)        \
 Y(REWARDED_D)
 
 #define Y(a) a,
@@ -602,14 +602,14 @@ int w[sizeof(restrictions_str) / sizeof(restrictions_str[0])];
 #define BRESTRICTED +15
 #define BREWARDED   -2
 
-void weigh_restriction_levels(int turn, int sources[2][4])
+void weigh_restriction_levels(int turn, int harvested_sources[2][4])
 {
 	// preciousness of the resource
 	int prec[2][4];
 
 	for (enum type t = A; t <= D; t++) {
-		prec[MY][t] = (sources[MY][t] <= 1 ? 2 : 1) * (turn >= 97 ? 0 : 1);
-		prec[OPP][t] = (sources[OPP][t] <= 1 ? 2 : 1) * (turn == 100 ? 0 : 1);
+		prec[MY][t] = (harvested_sources[MY][t] <= 1 ? 2 : 1) * (turn >= 97 ? 0 : 1);
+		prec[OPP][t] = (harvested_sources[OPP][t] <= 1 ? 2 : 1) * (turn == 100 ? 0 : 1);
 	}
 
 	w[NORMAL]       = BNORMAL;
@@ -626,32 +626,32 @@ void weigh_restriction_levels(int turn, int sources[2][4])
 
 // Floyd_Warshall algorithm functions  ------------------------------------------------------------------
 
-int adjacent_vertices(struct vertex *v1, struct vertex *v2)
+int adjacent_vertices(vertex_t *v1, vertex_t *v2)
 {
-	for (struct vertex **pa = v1->a; pa - v1->a < 4; pa++)
-		if (*pa && *pa == v2)
+	for (vertex_t **pa = v1->a; pa - v1->a < 4; pa++)
+		if (*pa == v2)
 			return 1;
 
 	return 0;
 }
 
 // [https://en.wikipedia.org/wiki/Floyd%E2%80%93Warshall_algorithm]
-void Floyd_Warshall(struct entity tiles[width][height], struct array_v *vertices,
-		int *dist, struct entity **prev, int metric)
+void Floyd_Warshall(entity_t tiles[width][height], struct array_v *vertices, int *dist, entity_t **prev,
+		int metric)
 {
-	const int NV = vertices->size;
+	const size_t NV = vertices->size;
 	int (*distances_v)[NV] = malloc(NV * NV * sizeof(int));
-	struct vertex *(*previous_v)[NV] = malloc(NV * NV * sizeof(struct vertex *));
+	vertex_t *(*previous_v)[NV] = malloc(NV * NV * sizeof(vertex_t *));
 
 	// initialization of Floyd-Warshall matrices & restrict areas ahead of a tentacle
 	// (matrix indices range over all vertices)
 	for (int i = 0; i < NV; i++) {
-		struct vertex *vi = vertices->array[i];
-		struct entity *ei = vi->e;
+		vertex_t *vi = vertices->array[i];
+		entity_t *ei = vi->e;
 
-		for (int j = 0; j < NV; j++) {
-			struct vertex *vj = vertices->array[j];
-			struct entity *ej = vj->e;
+		for (int j = 0; j < i; j++) {
+			vertex_t *vj = vertices->array[j];
+			entity_t *ej = vj->e;
 
 			// for each edge
 			if (adjacent_vertices(vi, vj)) {
@@ -688,12 +688,14 @@ void Floyd_Warshall(struct entity tiles[width][height], struct array_v *vertices
 					distances_v[i][j] = 1;
 				previous_v[i][j] = vi;
 			}
-			// for each vertex
 			else {
-				distances_v[i][j] = i == j ? 0 : w[FORBIDDEN];
-				previous_v[i][j] = i == j ? vi : NULL;
+				distances_v[i][j] = w[FORBIDDEN];
+				previous_v[i][j] = NULL;
 			}
 		}
+		// for each vertex
+		distances_v[i][i] = 0;
+		previuous_v[i][i] = vi;
 	}
 
 	// Floyd_Warshall algorithm
@@ -713,14 +715,15 @@ void Floyd_Warshall(struct entity tiles[width][height], struct array_v *vertices
 		prev[i] = NULL;
 	}
 	for (int i = 0; i < NV; i++) {
-		int x1 = vertices->array[i]->e->x;
-		int y1 = vertices->array[i]->e->y;
+		entity_t *ei = vertices->array[i]->e;
+
 		for (int j = 0; j < NV; j++) {
-			int x2 = vertices->array[j]->e->x;
-			int y2 = vertices->array[j]->e->y;
-			if (distances_v[i][j] < dist[EXP2(x1, y1, x2, y2)]) {
-				dist[EXP2(x1, y1, x2, y2)] = distances_v[i][j];
-				prev[EXP2(x1, y1, x2, y2)] = previous_v[i][j]->e;
+			entity_t *ej = vertices->array[j]->e;
+			int index = INDEX2(ei, ej);
+
+			if (distances_v[i][j] < dist[index]) {
+				dist[index] = distances_v[i][j];
+				prev[index] = previous_v[i][j]->e;
 			}
 		}
 	}
@@ -753,13 +756,13 @@ list_t *path_FW(struct entity tiles[width][height],
 // body-related auxiliary functions  --------------------------------------------------------------------
 
 struct body {
-	struct entity *root;
+	entity_t *root;
 	list_t *body_parts;
 
 	// shortest weighted and "taxicab" distance to the organism...
 	int (*distance_to_organism)[];
 	// ...and closest (weighted and "taxicab") organ for all tiles
-	struct entity *(*closest_organ)[];
+	entity_t *(*closest_organ)[];
 
 	// tiles of interest
 	list_t *accessible_organs;
@@ -1146,8 +1149,9 @@ void print_entities(entity_t tiles[width][height], list_t *available_sources[4])
 	putc('\n', stderr);
 }
 
-void print_restrictions(void)
+void print_restrictions(size_t number_vertices)
 {
+	fprintf(stderr, "# of vertices for the Floyd-Warshall algorithm -> %zu\n", number_vertices);
 	fprintf(stderr, "Base weights -> %s: %d %s: %d\n", restrictions_str[NORMAL], w[NORMAL],
 			restrictions_str[FORBIDDEN], w[FORBIDDEN]);
 	fprintf(stderr, "Modifications to weights "
@@ -1276,7 +1280,7 @@ int main()
 			entity->status |= owner == 1 ? MINE : owner == 0 ? OPPT : 0;
 			scanf("%d", &entity->organ_id);
 			if (entity->t == ROOT)
-				n_organisms[entity->o]++;
+				n_organisms[e->status & MINE ? MY : OPP]++;
 			if (entity->status & (MINE | OPPT))
 				put_map(organs, &entity->organ_id, entity);
 			char organ_dir[2];
@@ -1315,8 +1319,8 @@ int main()
 		struct array_v *vertices = generate_vertices(tiles);
 
 #ifdef DEBUG_WORLD_BUILDING
-		// quality control -- print-out the weights on restricted tiles
-		print_restrictions();
+		// quality control -- print-out the weights on restricted tiles + # of vertices for F-W
+		print_restrictions(vertices->size);
 #endif
 
 		// shortest path calculator of potential new routes
