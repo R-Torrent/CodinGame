@@ -800,7 +800,7 @@ void delete_body(body_t *b)
 	free(body);
 }
 
-void del_opp_body(opp_body_t *opp_b)
+void delete_opp_body(opp_body_t *opp_b)
 {
 	delete_list(&opp_b->body_parts);
 	delete_map(&opp_b->closest_index);
@@ -810,8 +810,8 @@ void del_opp_body(opp_body_t *opp_b)
 void populate_organisms(int n[2], hash_map_t **porganisms, hash_map_t **popp_organisms,
 		hash_map_t *organs)
 {
-	*porganisms = create_hash_map(n[MY], sizeof(int), free, del_body, NULL, NULL);
-	*popp_organisms = create_hash_map(n[OPP], sizeof(int), free, del_opp_body, NULL, NULL);
+	*porganisms = create_hash_map(n[MY], sizeof(int), free, delete_body, NULL, NULL);
+	*popp_organisms = create_hash_map(n[OPP], sizeof(int), free, delete_opp_body, NULL, NULL);
 
 	// my_organisms
 	for (int i = 0; i < n[MY]; i++) {
@@ -819,16 +819,16 @@ void populate_organisms(int n[2], hash_map_t **porganisms, hash_map_t **popp_org
 		int *container_i = malloc(sizeof(int));
 		int (*distances)[NT * sizeof(int)] = new->distance_to_organism
 				= malloc(2 * NT * sizeof(int));
-		struct entity *(*closest)[NT * sizeof(struct entity *)] = new->closest_organ
-				= malloc(2 * NT * sizeof(struct entity *));
+		entity_t *(*closest)[NT * sizeof(entity_t *)] = new->closest_organ
+				= malloc(2 * NT * sizeof(entity_t *));
 
 		new->body_parts = create_list(NULL);
 		for (int j = 0; j < NT; j++) {
-				distances[WEIGHTED][j] = w[FORBIDDEN];
-				closest[WEIGHTED][j] = NULL;
-				distances[TAXICAB][j] = w[FORBIDDEN];
-				closest[TAXICAB][j] = NULL;
-			}
+			distances[WEIGHTED][j] = w[FORBIDDEN];
+			closest[WEIGHTED][j] = NULL;
+			distances[TAXICAB][j] = w[FORBIDDEN];
+			closest[TAXICAB][j] = NULL;
+		}
 		new->accessible_organs = create_list(NULL);
 		new->vacant_slots = create_hash_set(NT, sizeof(entity_t), NULL, entity_hash, NULL);
 		for (list_t **l = new->accesible_sources; l - new->accessible_sources <= D; l++)
@@ -840,7 +840,7 @@ void populate_organisms(int n[2], hash_map_t **porganisms, hash_map_t **popp_org
 
 	// opp_organisms
 	for (int i = 0; i < n[OPP]; i++) {
-		struct opp_body *new = malloc(sizeof(struct opp_body));
+		opp_body_t *new = malloc(sizeof(opp_body_t));
 		int *container_i = malloc(sizeof(int));
 
 		new->body_parts = create_list(NULL);
@@ -851,19 +851,17 @@ void populate_organisms(int n[2], hash_map_t **porganisms, hash_map_t **popp_org
 
 			*container_j = j;
 			*index = NO_INDEX;
-
 			put_map(new->closest_index, container_j, index);
 		}
 
 		*container_i = i;
-
 		put_map(*popp_organisms, container_i, new);
 	}
 
 	// establish the root organs
 	int key_organism[2] = {0, 0};
 	for (int i = 0; i < organs->capacity; i++) {
-		struct entity *entity = get_map(organs, &i);
+		entity_t *entity = get_map(organs, &i);
 
 		if (entity && entity->t == ROOT) {
 			if (entity->o == MY) {
