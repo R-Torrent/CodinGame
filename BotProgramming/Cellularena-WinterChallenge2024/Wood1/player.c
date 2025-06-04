@@ -454,7 +454,7 @@ void reset_grid(entity_t tiles[width][height])
 }
 
 #define STATUS(A, B, C, D)                                                                  \
-	if (A && tiles[B][C].d == D) {                                                        \
+	if (A && tiles[B][C].d == D) {                                                          \
 		if (tiles[B][C].t == HARVESTER)                                                     \
 			tiles[x][y].status |= tiles[B][C].status & MINE ? MY_HARVESTED : OPP_HARVESTED; \
 		else if (tiles[B][C].t == TENTACLE)                                                 \
@@ -635,6 +635,13 @@ int adjacent_vertices(vertex_t *v1, vertex_t *v2)
 	return 0;
 }
 
+#define DEVIATION(M, N)                \
+	distances_v[i][j] +=               \
+			(M)->t == A ? w[N ## _A] : \
+			(M)->t == B ? w[N ## _B] : \
+			(M)->t == C ? w[N ## _C] : \
+			w[N ## _D];
+
 // [https://en.wikipedia.org/wiki/Floyd%E2%80%93Warshall_algorithm]
 void Floyd_Warshall(entity_t tiles[width][height], struct array_v *vertices, int *dist, entity_t **prev,
 		int metric)
@@ -660,29 +667,13 @@ void Floyd_Warshall(entity_t tiles[width][height], struct array_v *vertices, int
 				else if (metric == WEIGHTED) {
 					distances_v[i][j] = w[NORMAL];
 					if (ei->status & MY_HARVESTED)
-						distances_v[i][j] +=
-								ei->t == A ? w[RESTRICTED_A] :
-								ei->t == B ? w[RESTRICTED_B] :
-								ei->t == C ? w[RESTRICTED_C] :
-								w[RESTRICTED_D];
+						DEVIATION(ei, RESTRICTED);
 					if (ej->status & MY_HARVESTED)
-						distances_v[i][j] +=
-								ej->t == A ? w[RESTRICTED_A] :
-								ej->t == B ? w[RESTRICTED_B] :
-								ej->t == C ? w[RESTRICTED_C] :
-								w[RESTRICTED_D];
+						DEVIATION(ej, RESTRICTED);
 					if (ei->status & OPP_HARVESTED)
-						distances_v[i][j] +=
-								ei->t == A ? w[REWARDED_A] :
-								ei->t == B ? w[REWARDED_B] :
-								ei->t == C ? w[REWARDED_C] :
-								w[REWARDED_D];
+						DEVIATION(ei, REWARDED);
 					if (ej->status & OPP_HARVESTED)
-						distances_v[i][j] +=
-								ej->t == A ? w[REWARDED_A] :
-								ej->t == B ? w[REWARDED_B] :
-								ej->t == C ? w[REWARDED_C] :
-								w[REWARDED_D];
+						DEVIATION(ej, REWARDED);
 				}
 				else // "taxicab" metric
 					distances_v[i][j] = 1;
@@ -809,7 +800,7 @@ void delete_body(body_t *b)
 	free(body);
 }
 
-void del_opp_inner_body(opp_body_t *opp_b)
+void del_opp_body(opp_body_t *opp_b)
 {
 	delete_list(&opp_b->body_parts);
 	delete_map(&opp_b->closest_index);
@@ -819,12 +810,12 @@ void del_opp_inner_body(opp_body_t *opp_b)
 void populate_organisms(int n[2], hash_map_t **porganisms, hash_map_t **popp_organisms,
 		hash_map_t *organs)
 {
-	*porganisms = create_hash_map(n[MY], sizeof(int), free, del_inner_body, NULL, NULL);
-	*popp_organisms = create_hash_map(n[OPP], sizeof(int), free, del_opp_inner_body, NULL, NULL);
+	*porganisms = create_hash_map(n[MY], sizeof(int), free, del_body, NULL, NULL);
+	*popp_organisms = create_hash_map(n[OPP], sizeof(int), free, del_opp_body, NULL, NULL);
 
 	// my_organisms
 	for (int i = 0; i < n[MY]; i++) {
-		struct body *new = malloc(sizeof(struct body));
+		body_t *new = malloc(sizeof(body_t));
 		int *container_i = malloc(sizeof(int));
 		int (*distances)[NT * sizeof(int)] = new->distance_to_organism
 				= malloc(2 * NT * sizeof(int));
@@ -832,20 +823,18 @@ void populate_organisms(int n[2], hash_map_t **porganisms, hash_map_t **popp_org
 				= malloc(2 * NT * sizeof(struct entity *));
 
 		new->body_parts = create_list(NULL);
-		for (int x = 0; x < width; x++)
-			for (int y = 0; y < height; y++) {
-				distances[WEIGHTED][EXP1(x, y)] = w[FORBIDDEN];
-				closest[WEIGHTED][EXP1(x, y)] = NULL;
-				distances[TAXICAB][EXP1(x, y)] = w[FORBIDDEN];
-				closest[TAXICAB][EXP1(x, y)] = NULL;
+		for (int j = 0; j < NT; j++) {
+				distances[WEIGHTED][j] = w[FORBIDDEN];
+				closest[WEIGHTED][j] = NULL;
+				distances[TAXICAB][j] = w[FORBIDDEN];
+				closest[TAXICAB][j] = NULL;
 			}
 		new->accessible_organs = create_list(NULL);
-		new->vacant_slots = create_hash_set(NT, sizeof(struct entity), NULL, entity_hash, NULL);
-		for (list_t **l = new->free_sources; l - new->free_sources <= D; l++)
+		new->vacant_slots = create_hash_set(NT, sizeof(entity_t), NULL, entity_hash, NULL);
+		for (list_t **l = new->accesible_sources; l - new->accessible_sources <= D; l++)
 			*l = create_list(NULL);
 
 		*container_i = i;
-
 		put_map(*porganisms, container_i, new);
 	}
 
