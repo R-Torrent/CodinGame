@@ -808,6 +808,14 @@ void delete_opp_body(opp_body_t *opp_b)
 	free(opp_body);
 }
 
+void opponent_no_indices(hash_map_t *closest_index, body_t *b)
+{
+	int *index = malloc(sizeof(int));
+
+	*index = NO_INDEX;
+	put_map(closest_index, b, index);
+}
+
 struct container1 {
 	int *key_organism;
 	hash_map_t *organisms;
@@ -888,14 +896,7 @@ void populate_organisms(int n[2], hash_map_t **porganisms, hash_map_t **popp_org
 
 		new->body_parts = create_list(NULL);
 		new->closest_index = create_hash_map(n[MY], sizeof(body_t *), NULL, free, body_hash, NULL);
-		for (int j = 0; j < n[MY]; j++) {
-			int *container_j = malloc(sizeof(int));
-			int *index = malloc(sizeof(int));
-
-			*container_j = j;
-			*index = NO_INDEX;
-			put_map(new->closest_index, container_j, index);
-		}
+		iterate_over_map(new->closest_index, *porganisms, (void (*)(void *, void *))opp_no_indices);
 
 		*container_i = i;
 		put_map(*popp_organisms, container_i, new);
@@ -960,21 +961,24 @@ void closest_points(struct container2 *data, entity_t *e)
 	}
 }
 
-void find_min_distance(int *data[2], struct entity *e)
+void find_index_min2(int *data[2], entity_t *e)
 {
 	int *closest_index = data[0];
 	int *distances = data[1];
 	int index = INDEX1(e);
 	int min_d = *closest_index == NO_INDEX ? w[FORBIDDEN] : distances[*closest_index];
-	int d = distances[index];
 
-	if (d < min_d)
+	if (distances[index] < min_d)
 		*closest_index = index;
 }
 
-void find_index_min1(struct container2 *data, opp_body_t *ob)
+void find_index_min1(body_t *b, opp_body_t *ob)
 {
-	int *closest_index = get_map(ob->closest_index, &i);
+	int *closest_index = get_map(ob->closest_index, b);
+	int (*distance_to_organism)[NT * sizeof(int)] = b->distance_to_organism;
+
+	iterate_over_list((int *[]){closest_index, distance_to_organism[WEIGHTED]},
+			ob->body_parts, (void (*)(void *, void *))find_index_min2);
 }
 
 // tabulate my organism's disposition to engage directly
@@ -986,7 +990,7 @@ void inspect_surroundings(struct container2 *data, body_t *b)
 	// calculate the closest distances to my organisms from all points
 	iterate_over_list(data, b->body_parts, (void (*)(void *, void *))closest_points);
 
-	// fill in lists of interesting tiles
+	// fill in the collections of interesting tiles
 	int i = 0;
 	for (entity_t *e = data->tiles; i < NT; e++, i++) {
 		if (distance_to_organism[WEIGHTED][i] < w[FORBIDDEN]) {
@@ -1000,20 +1004,10 @@ void inspect_surroundings(struct container2 *data, body_t *b)
 	}
 	sort_list(NULL, b->accessible_organs, (int (*)(void *, void *, void *))compare_highest_value);
 	for (list_t **l = b->accessible_sources; l - b->accessible_sources <= D; l++)
-			sort_list(b, *l, (int (*)(void *, void *, void *))compare_closest);
+		sort_list(b, *l, (int (*)(void *, void *, void *))compare_closest);
 
 	// for all opponents, figure if this is the closest among my organisms
-	iterate_over_map(data, data->opp_organisms, (void (*)(void *, void *))find_index_min1);
-		
-
-		distance_to_organism = body->distance_to_organism;
-		iterate_over_list((int *[]){closest_index, distance_to_organism[WEIGHTED]},
-				opp_body->body_parts, (void (*)(void *, void *))find_min_distance);
-	}
-
-	
-		
-	}
+	iterate_over_map(b, data->opp_organisms, (void (*)(void *, void *))find_index_min1);
 }
 
 struct body *whose_body(hash_map_t *organisms, struct entity *e)
