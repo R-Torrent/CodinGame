@@ -15,7 +15,7 @@ using namespace std;
 
 struct Mayan {
 
-    int value;
+    long value;
     string row[100];
 
     static Mayan numerals[];
@@ -23,7 +23,7 @@ struct Mayan {
 
     Mayan() { }
 
-    Mayan(int n): value(n) { }
+    Mayan(long n): value(n) { }
 
     void determineNumeral(void)
     {
@@ -38,7 +38,7 @@ struct Mayan {
         value = -1;
     }
 
-    static int readMayan(const int);
+    static long readMayan(const int);
 
 };
 
@@ -46,13 +46,13 @@ Mayan Mayan::numerals[20];
 int Mayan::h = 100;
 int Mayan::l = 100;
 
-int Mayan::readMayan(const int lines)
+long Mayan::readMayan(const int lines)
 {
-    int n = 0;
-    Mayan m;
+    long n = 0;
     for (int i = 0; i < lines / h; i++) {
-            for (int j = 0; j < h; j++)
-                cin >> m.row[j]; cin.ignore();
+        Mayan m;
+        for (int j = 0; j < h; j++)
+            cin >> m.row[j]; cin.ignore();
         m.determineNumeral();
         n *= 20;
         n += m.value;
@@ -61,9 +61,9 @@ int Mayan::readMayan(const int lines)
     return n;
 }
 
-std::ostream& place_numeral(std::ostream& os, int n)
+std::ostream& place_numeral(std::ostream& os, long n)
 {
-    int x = n / 20;
+    long x = n / 20;
     if (x)
         place_numeral(os, x);
     for(int j = 0; j < Mayan::h; j++)
@@ -90,12 +90,13 @@ int main()
             Mayan::numerals[i].row[j] = numeral.substr(i * Mayan::l, Mayan::l);
     }
 
-    int s1, n1;
-    cin >> s1; cin.ignore();
-    n1 = Mayan::readMayan(s1);
-    int s2, n2;
-    cin >> s2; cin.ignore();
-    n2 = Mayan::readMayan(s2);
+    int s;
+    long n1;
+    cin >> s; cin.ignore();
+    n1 = Mayan::readMayan(s);
+    long n2;
+    cin >> s; cin.ignore();
+    n2 = Mayan::readMayan(s);
 
     string operation;
     cin >> operation; cin.ignore();
