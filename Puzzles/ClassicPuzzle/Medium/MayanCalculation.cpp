@@ -67,7 +67,7 @@ std::ostream& place_numeral(std::ostream& os, int n)
     if (x)
         place_numeral(os, x);
     for(int j = 0; j < Mayan::h; j++)
-        os << Mayan::numerals[n].row[j] << endl;
+        os << Mayan::numerals[n % 20].row[j] << endl;
 
     return os;
 }
