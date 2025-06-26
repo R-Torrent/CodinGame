@@ -1,4 +1,4 @@
-// Second attempt on this hard problem: xx% score
+// Second attempt on this hard problem: 100% score
 
 #include <math.h>
 #include <stdio.h>
