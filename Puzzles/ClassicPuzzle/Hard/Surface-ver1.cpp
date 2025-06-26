@@ -39,7 +39,7 @@ struct Lake {
 
 };
 
-#define PUSH if (map[x][y]) q.push(pair(x, y))
+#define PUSH(A, B) if (map[(A)][(B)]) q.push(pair((A), (B)));
 
 // [https://en.wikipedia.org/wiki/Flood_fill#Moving_the_recursion_into_a_data_structure]
 void floodFill(Lake& lake, const bool (*const map)[10000],
@@ -50,26 +50,13 @@ void floodFill(Lake& lake, const bool (*const map)[10000],
     while (!q.empty()) {
         pair<int, int> n = q.front();
         q.pop();
-        if (map[n.first][n.second] && !lake.coordinates.contains(n)) {
+        if (!lake.coordinates.contains(n)) {
             lake.surface++;
             lake.coordinates.insert(n);
-            int x, y;
-            if (n.first > 0) {     // push west
-                x = n.first - 1, y = n.second;
-                PUSH;
-            }
-            if (n.first < l - 1) {  // push east
-                x = n.first + 1, y = n.second;
-                PUSH;
-            }
-            if (n.second > 0) {     // push north
-                x = n.first, y =n.second - 1;
-                PUSH;
-            }
-            if (n.second < h - 1) { // push south
-                x = n.first, y = n.second + 1;
-                PUSH;
-            }
+            if (n.first > 0) { PUSH(n.first - 1, n.second) }      // push west
+            if (n.first < l - 1) { PUSH(n.first + 1, n.second) }  // push east
+            if (n.second > 0) { PUSH(n.first, n.second - 1) }     // push north
+            if (n.second < h - 1) { PUSH(n.first, n.second + 1) } // push south
         }
     }
 }
