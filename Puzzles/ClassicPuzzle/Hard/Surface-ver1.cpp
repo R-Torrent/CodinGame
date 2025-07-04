@@ -1,4 +1,5 @@
 // First attempt on this hard problem: 80% score
+// Solved with an implementation of the 'flood fill' algorithm using queues
 // It timed out in the last test case
 
 #include <iostream>
@@ -88,7 +89,6 @@ int main()
             map[x++][y] = c == 'O';
     }
     vector<Lake> lakes;
-    int answers[1000];
     int n;
     cin >> n; cin.ignore();
     for (int i = 0; i < n; i++) {
