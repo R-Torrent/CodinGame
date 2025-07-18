@@ -116,8 +116,6 @@ class Player {
 
 	public Agent[] getAgents() { return agents; }
 
-	public int getMyAgentCount() { return myAgentCount; }
-
 	public int getGameTurn() { return gameTurn; }
 
 }
@@ -131,29 +129,30 @@ class Brain {
 	}
 
 	public void think() {
-		for (int i = 0; i < player.getMyAgentCount(); i++) {
-			// TODO: think
-			;
-		}
+		final Pair[] destination = { new Pair(6, 1), new Pair(6, 3) };
+
+		final List<Agent> myAgents = Arrays.stream(player.getAgents())
+				.filter(a -> a.getPlayerId() == player.getMyId())
+				.sorted((a1, a2) -> a1.compareDistanceToTarget(a2, destination[0]))
+				.toList();
+
+		myAgents.get(0).setMoveAction(Command.MOVE.formCommand(null, destination[0], null));
+		myAgents.get(0).setCombatAction(null);
+		myAgents.get(0).setMessageAction( player.getGameTurn() == 1
+				? Command.MESSAGE.formCommand(null,null, "gl hf")
+				: null);
+		myAgents.get(1).setMoveAction(Command.MOVE.formCommand(null, destination[1], null));
+		myAgents.get(1).setCombatAction(null);
+		myAgents.get(1).setMessageAction( player.getGameTurn() == 1
+				? Command.MESSAGE.formCommand(null,null, "gl hf")
+				: null);
 	}
 
 	public List<String> issueCommands() {
-		List<String> allCommands = new ArrayList<>();
-
-		for (int i = 0; i < player.getAgents().length; i++) {
-			final Agent a = player.getAgents()[i];
-			if (a.getPlayerId() != player.getMyId())
-				continue;
-			final StringJoiner commands = new StringJoiner(";",
-					Integer.toString(i + 1) + ";", "");
-			if (player.getGameTurn() == 1)
-				commands.add(Command.MESSAGE.formCommand(null,null, "gl hf"));
-			// TODO: add the commands the brain has thought of here
-			commands.add(Command.HUNKER_DOWN.formCommand(null, null, ""));
-			allCommands.add(commands.toString());
-		}
-
-		return allCommands;
+		return Arrays.stream(player.getAgents())
+				.map(a -> a.buildCommands(player))
+				.filter(Objects::nonNull)
+				.toList();
 	}
 
 }
@@ -211,6 +210,9 @@ class Agent {
 	private int cooldown;
 	private int splashBombs;
 	private int wetness;
+	private String moveAction;
+	private String combatAction;
+	private String messageAction;
 
 	public Agent(
 			int agentId,
@@ -242,6 +244,31 @@ class Agent {
 	public int getAgentId() { return agentId; }
 
 	public int getPlayerId() { return playerId;	}
+
+	public void setMoveAction(String moveAction) { this.moveAction = moveAction; }
+
+	public void setCombatAction(String combatAction) { this.combatAction = combatAction; }
+
+	public void setMessageAction(String messageAction) { this.messageAction = messageAction; }
+
+	public int compareDistanceToTarget(Agent a, Pair target) {
+		return Integer.compare(this.coord.distanceTo(target), a.coord.distanceTo(target));
+	}
+
+	public String buildCommands(Player player) {
+		if (playerId != player.getMyId())
+			return null;
+
+		final StringJoiner commands = new StringJoiner(";", agentId + ";", "");
+		if (moveAction != null)
+			commands.add(moveAction);
+		if (combatAction != null)
+			commands.add(combatAction);
+		if (messageAction != null)
+			commands.add(messageAction);
+
+		return commands.toString();
+	}
 
 }
 
