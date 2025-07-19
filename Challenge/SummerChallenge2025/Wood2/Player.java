@@ -182,9 +182,18 @@ class Brain {
 				if (t.getType() == Tile.Type.EMPTY && t.getDamage(totalDamage) < bestCoverValue)
 					destination = t.getCoordinates(); // move down
 			}
+			Agent target = null;
+			int maximumDamageInflicted = Integer.MIN_VALUE;
+			for (Agent a1 : otherAgents) {
+				temp = a.calculateDamageOnTarget(grid, destination, a1);
+				if (temp > maximumDamageInflicted) {
+					maximumDamageInflicted = temp;
+					target = a1;
+				}
+			}
 
 			a.setMoveAction(Command.MOVE.formCommand(null, destination, null));
-			a.setCombatAction(Command.SHOOT.formCommand(otherAgents.get(0), null, null));
+			a.setCombatAction(Command.SHOOT.formCommand(target, null, null));
 			a.setMessageAction( player.getGameTurn() == 1
 					? Command.MESSAGE.formCommand(null, null, "gl hf")
 					: null);
@@ -327,6 +336,14 @@ class Agent {
 
 	public int[][] calculateDamageArea(Grid grid) {
 		return calculateDamageArea(grid, coordinates);
+	}
+
+	public int calculateDamageOnTarget(Grid grid, Pair from, Agent target) {
+		return calculateDamageArea(grid, from)[target.coordinates.x()][target.coordinates.y()];
+	}
+
+	public int calculateDamageOnTarget(Grid grid, Agent target) {
+		return calculateDamageArea(grid)[target.coordinates.x()][target.coordinates.y()];
 	}
 
 	public String buildCommands(Player player) {
