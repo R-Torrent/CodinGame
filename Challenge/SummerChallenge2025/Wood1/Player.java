@@ -492,10 +492,10 @@ class Grid {
 		if (previous[from.getIndex()][to.getIndex()] == null)
 			return Collections.emptyList();
 		List<Tile> path = new ArrayList<>();
-		path.add(from);
+		path.add(to);
 		while (!from.equals(to)) {
 			to = previous[from.getIndex()][to.getIndex()];
-			path.addFirst(from);
+			path.addFirst(to);
 		}
 
 		return path;
@@ -573,6 +573,18 @@ class Tile {
 
 	int getDamage(int[][] damageArea) {
 		return damageArea[coordinates.x()][coordinates.y()];
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (o == null || getClass() != o.getClass()) return false;
+		Tile tile = (Tile) o;
+		return index == tile.index;
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hashCode(index);
 	}
 
 }
