@@ -80,8 +80,7 @@ class Player {
 					grid.getTiles()[in.nextInt()][in.nextInt()].getCoordinates(), // [x, y]
 					in.nextInt(), // Number of turns before this agent can shoot
 					in.nextInt(), // splashBombs remaining
-					in.nextInt(),  // Damage (0-100) this agent has taken
-					grid
+					in.nextInt()  // Damage (0-100) this agent has taken
 			);
 		}
 		for (int i = 0; i < agents.length; i++)
@@ -124,6 +123,8 @@ class Player {
 
 	public Agent[] getAgents() { return agents; }
 
+	public Grid getGrid() {	return grid; }
+
 	public int getGameTurn() { return gameTurn; }
 
 }
@@ -145,7 +146,7 @@ class Brain {
 		for (int y = 0; y < grid.getHeight(); y++)
 			for (int x = 0; x < grid.getWidth(); x++)
 				for (Agent a : otherAgents)
-					totalDamage[x][y] += a.getDamageArea()[x][y];
+					totalDamage[x][y] += a.calculateDamageArea(player.getGrid())[x][y];
 
 		final List<Agent> myAgents = Arrays.stream(player.getAgents())
 				.filter(Objects::nonNull)
@@ -155,24 +156,32 @@ class Brain {
 			int x = a.getCoordinates().x(), y = a.getCoordinates().y();
 			Pair destination = null;
 			int bestCoverValue = Integer.MAX_VALUE, temp;
-			if (x > 0 && grid.getTiles()[x - 1][y].getType() == Tile.Type.EMPTY
-					&& (temp = grid.getTiles()[x - 1][y].getDamage(totalDamage)) < bestCoverValue) {
-				bestCoverValue = temp;
-				destination = grid.getTiles()[x - 1][y].getCoordinates(); // left
+			if (x > 0) {
+				Tile t = grid.getTiles()[x - 1][y];
+				if (t.getType() == Tile.Type.EMPTY && (temp = t.getDamage(totalDamage)) < bestCoverValue) {
+					bestCoverValue = temp;
+					destination = t.getCoordinates(); // move left
+				}
 			}
-			if (x < grid.getWidth() - 1 && grid.getTiles()[x + 1][y].getType() == Tile.Type.EMPTY
-					&& (temp = grid.getTiles()[x + 1][y].getDamage(totalDamage)) < bestCoverValue) {
-				bestCoverValue = temp;
-				destination = grid.getTiles()[x + 1][y].getCoordinates(); // right
+			if (x < grid.getWidth() - 1) {
+				Tile t = grid.getTiles()[x + 1][y];
+				if (t.getType() == Tile.Type.EMPTY && (temp = t.getDamage(totalDamage)) < bestCoverValue) {
+					bestCoverValue = temp;
+					destination = t.getCoordinates(); // move right
+				}
 			}
-			if (y > 0 && grid.getTiles()[x][y - 1].getType() == Tile.Type.EMPTY
-					&& (temp = grid.getTiles()[x][y - 1].getDamage(totalDamage)) < bestCoverValue) {
-				bestCoverValue = temp;
-				destination = grid.getTiles()[x][y - 1].getCoordinates(); // top
+			if (y > 0) {
+				Tile t = grid.getTiles()[x][y - 1];
+				if (t.getType() == Tile.Type.EMPTY && (temp = t.getDamage(totalDamage)) < bestCoverValue) {
+					bestCoverValue = temp;
+					destination = t.getCoordinates(); // move up
+				}
 			}
-			if (y < grid.getHeight() - 1 && grid.getTiles()[x][y + 1].getType() == Tile.Type.EMPTY
-					&& grid.getTiles()[x][y + 1].getDamage(totalDamage) < bestCoverValue)
-				destination = grid.getTiles()[x][y + 1].getCoordinates(); // bottom
+			if (y < grid.getHeight() - 1) {
+				Tile t = grid.getTiles()[x][y + 1];
+				if (t.getType() == Tile.Type.EMPTY && t.getDamage(totalDamage) < bestCoverValue)
+					destination = t.getCoordinates(); // move down
+			}
 
 			a.setMoveAction(Command.MOVE.formCommand(null, destination, null));
 			a.setCombatAction(Command.SHOOT.formCommand(otherAgents.get(0), null, null));
@@ -248,7 +257,6 @@ class Agent {
 	private String moveAction;
 	private String combatAction;
 	private String messageAction;
-	private int[][] damageArea;
 
 	public Agent(
 			int agentId,
@@ -269,13 +277,11 @@ class Agent {
 			Pair coordinates,
 			int cooldown,
 			int splashBombs,
-			int wetness,
-			Grid grid) {
+			int wetness) {
 		this.coordinates = coordinates;
 		this.cooldown = cooldown;
 		this.splashBombs = splashBombs;
 		this.wetness = wetness;
-		calculateDamageArea(grid);
 	}
 
 	public int getAgentId() { return agentId; }
@@ -285,8 +291,6 @@ class Agent {
 	public Pair getCoordinates() { return coordinates; }
 
 	public int getWetness() { return wetness; }
-
-	public int[][] getDamageArea() { return damageArea;	}
 
 	public void setMoveAction(String moveAction) { this.moveAction = moveAction; }
 
@@ -298,28 +302,31 @@ class Agent {
 		return Integer.compare(this.coordinates.distanceTo(target), a.coordinates.distanceTo(target));
 	}
 
-	public void calculateDamageArea(Grid grid) {
+	public int[][] calculateDamageArea(Grid grid, Pair from) {
 		final int width = grid.getWidth();
 		final int height = grid.getHeight();
-		damageArea = new int[width][height];
+		int[][] damageArea = new int[width][height];
 
 		for (int y = 0; y < height; y++)
 			for (int x = 0; x < width; x++) {
-				Tile.Type type = grid.getTiles()[x][y].getType();
-				if (type != Tile.Type.EMPTY)
-					continue;
-				final Pair p = grid.getTiles()[x][y].getCoordinates();
-				final int dist = coordinates.distanceTo(p);
+				final Pair target = grid.getTiles()[x][y].getCoordinates();
+				final int dist = from.distanceTo(target);
 				if (dist <= optimalRange)
 					damageArea[x][y] = soakingPower;
 				else if (dist <= 2 * optimalRange)
 					damageArea[x][y] = soakingPower / 2;
-				Tile.Type cover = grid.getCoverAreaMap().get(p)[x][y];
+				Tile.Type cover = grid.getCoverAreaMap().get(target)[from.x()][from.y()];
 				if (cover == Tile.Type.HIGH_COVER)
 					damageArea[x][y] /= 4;
 				else if (cover == Tile.Type.LOW_COVER)
 					damageArea[x][y] /= 2;
 			}
+
+		return damageArea;
+	}
+
+	public int[][] calculateDamageArea(Grid grid) {
+		return calculateDamageArea(grid, coordinates);
 	}
 
 	public String buildCommands(Player player) {
@@ -371,49 +378,40 @@ class Grid {
 				final Tile.Type[][] coverArea = new Tile.Type[width][height];
 				final Pair from = tiles[x1][y1].getCoordinates();
 
-				if (x1 > 0) {
+				for (int x = 0; x < width; x++)
+					for (int y = 0; y < height; y++)
+						coverArea[x][y] = Tile.Type.EMPTY;
+				if (x1 > 1) {
 					final Tile.Type cover = tiles[x1 - 1][y1].getType(); // left cover
 					if (cover != Tile.Type.EMPTY)
 						for (int y = 0; y < height; y++)
 							for (int x = 0; x < x1 - 1; x++)
-								if ((Math.abs(y - y1) <= x1 - x) && from.distanceTo(tiles[x][y].getCoordinates()) > 2)
-									if (cover == Tile.Type.HIGH_COVER)
-										coverArea[x][y] = cover;
-									else if (cover == Tile.Type.LOW_COVER && coverArea[x][y] == Tile.Type.EMPTY)
-										coverArea[x][y] = cover;
+								if ((Math.abs(y - y1) <= x1 - x) && ((x1 - x) > 2 || Math.abs(y - y1) == 2))
+									coverArea[x][y] = coverArea[x][y].maxCover(cover);
 				}
-				if (x1 < width - 1) {
+				if (x1 < width - 2) {
 					final Tile.Type cover = tiles[x1 + 1][y1].getType(); // right cover
 					if (cover != Tile.Type.EMPTY)
 						for (int y = 0; y < height; y++)
 							for (int x = width - 1; x > x1 + 1; x--)
-								if ((Math.abs(y - y1) <= x - x1) && from.distanceTo(tiles[x][y].getCoordinates()) > 2)
-									if (cover == Tile.Type.HIGH_COVER)
-										coverArea[x][y] = cover;
-									else if (cover == Tile.Type.LOW_COVER && coverArea[x][y] == Tile.Type.EMPTY)
-										coverArea[x][y] = cover;
+								if ((Math.abs(y - y1) <= x - x1) && ((x - x1) > 2 || Math.abs(y - y1) == 2))
+									coverArea[x][y] = coverArea[x][y].maxCover(cover);
 				}
-				if (y1 > 0) {
-					final Tile.Type cover = tiles[x1][y1 - 1].getType(); // up cover
+				if (y1 > 1) {
+					final Tile.Type cover = tiles[x1][y1 - 1].getType(); // top cover
 					if (cover != Tile.Type.EMPTY)
 						for (int x = 0; x < width; x++)
 							for (int y = 0; y < y1 - 1; y++)
-								if ((Math.abs(x - x1) <= y1 - y) && from.distanceTo(tiles[x][y].getCoordinates()) > 2)
-									if (cover == Tile.Type.HIGH_COVER)
-										coverArea[x][y] = cover;
-									else if (cover == Tile.Type.LOW_COVER && coverArea[x][y] == Tile.Type.EMPTY)
-										coverArea[x][y] = cover;
+								if ((Math.abs(x - x1) <= y1 - y) && ((y1 - y) > 2 || Math.abs(x - x1) == 2))
+									coverArea[x][y] = coverArea[x][y].maxCover(cover);
 				}
-				if (y1 < height - 1) {
-					final Tile.Type cover = tiles[x1][y1 + 1].getType(); // down cover
+				if (y1 < height - 2) {
+					final Tile.Type cover = tiles[x1][y1 + 1].getType(); // bottom cover
 					if (cover != Tile.Type.EMPTY)
 						for (int x = 0; x < width; x++)
 							for (int y = height - 1; y > y1 + 1; y--)
-								if ((Math.abs(x - x1) <= y - y1) && from.distanceTo(tiles[x][y].getCoordinates()) > 2)
-									if (cover == Tile.Type.HIGH_COVER)
-										coverArea[x][y] = cover;
-									else if (cover == Tile.Type.LOW_COVER && coverArea[x][y] == Tile.Type.EMPTY)
-										coverArea[x][y] = cover;
+								if ((Math.abs(x - x1) <= y - y1) && ((y - y1) > 2 || Math.abs(x - x1) == 2))
+									coverArea[x][y] = coverArea[x][y].maxCover(cover);
 				}
 				coverAreaMap.put(from, coverArea);
 			}
@@ -424,29 +422,46 @@ class Grid {
 class Tile {
 
 	private final Pair coordinates;
-	private final Type t;
+	private final Type type;
 
 	public enum Type {
 
-		EMPTY     ,
-		LOW_COVER ,
-		HIGH_COVER
+		EMPTY {
+			@Override
+			public Type maxCover(Type comparedWith) {
+				return comparedWith;
+			}
+		},
+		LOW_COVER {
+			@Override
+			public Type maxCover(Type comparedWith) {
+				return comparedWith == HIGH_COVER ? comparedWith : this;
+			}
+		},
+		HIGH_COVER {
+			@Override
+			public Type maxCover(Type comparedWith) {
+				return this;
+			}
+		};
+
+		public abstract Type maxCover(Type comparedWith);
 
 	}
 
 	public Tile(int x, int y, int type) {
 		this.coordinates = new Pair(x, y);
 		switch (type) {
-			case 1: t = Type.LOW_COVER; break;
-			case 2: t = Type.HIGH_COVER; break;
-			case 0: default: t = Type.EMPTY; break;
+			case 1: this.type = Type.LOW_COVER; break;
+			case 2: this.type = Type.HIGH_COVER; break;
+			case 0: default: this.type = Type.EMPTY; break;
 		}
 	}
 
 	public Pair getCoordinates() { return coordinates; }
 
-	public Type getType() { return t; }
-	
+	public Type getType() { return type; }
+
 	int getDamage(int[][] damageArea) {
 		return damageArea[coordinates.x()][coordinates.y()];
 	}
@@ -460,7 +475,7 @@ record Pair(int x, int y) {
 		return x + " " + y;
 	}
 
-	public int distanceTo(Pair p) {
+	public int distanceTo(Pair p) { // Manhattan distance
 		Objects.requireNonNull(p);
 		return Math.abs(x - p.x) + Math.abs(y - p.y);
 	}
