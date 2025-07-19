@@ -43,7 +43,7 @@ class Player {
 		// game loop
 		for ( ; gameTurn <= limitGameTurns; gameTurn++) {
 			loadTurn();
-			overmind.think();
+			overmind.think(grid);
 
 			// Write an action using System.out.println()
 			// To debug: System.err.println("Debug messages...");
@@ -59,13 +59,13 @@ class Player {
 					.filter(Objects::nonNull)
 					.filter(a -> a.getPlayerId() == myId)
 					.map(a -> {
-							StringJoiner commands = new StringJoiner(";",
-									Integer.toString(a.getAgentId()) + ";", "");
-							commands.add(Command.MESSAGE.formCommand(null, null, gameTurn == 1
-									? "gl hf"
-									: "brain dead"));
-							commands.add(Command.HUNKER_DOWN.formCommand(null, null, ""));
-							return commands.toString(); })
+						StringJoiner commands = new StringJoiner(";",
+                                a.getAgentId() + ";", "");
+						commands.add(Command.MESSAGE.formCommand(null, null, gameTurn == 1
+								? "gl hf"
+								: "brain dead"));
+						commands.add(Command.HUNKER_DOWN.formCommand(null, null, ""));
+						return commands.toString(); })
 					.forEach(System.out::println);
 		}
 	}
@@ -77,10 +77,11 @@ class Player {
 			final int agentId = in.nextInt();
 			stillAlive[agentId - 1] = true;
 			agents[agentId - 1].setAgent(
-					grid.getTiles()[in.nextInt()][in.nextInt()].getCoord(), // [x, y]
+					grid.getTiles()[in.nextInt()][in.nextInt()].getCoordinates(), // [x, y]
 					in.nextInt(), // Number of turns before this agent can shoot
 					in.nextInt(), // splashBombs remaining
-					in.nextInt()  // Damage (0-100) this agent has taken
+					in.nextInt(),  // Damage (0-100) this agent has taken
+					grid
 			);
 		}
 		for (int i = 0; i < agents.length; i++)
@@ -110,8 +111,8 @@ class Player {
 		for (int i = 0; i < height; i++)
 			for (int j = 0; j < width; j++)
 				grid.initTile(
-						in.nextInt(), // X coordinate, 0 is left edge
-						in.nextInt(), // Y coordinate, 0 is top edge
+						in.nextInt(), // X coordinates, 0 is left edge
+						in.nextInt(), // Y coordinates, 0 is top edge
 						in.nextInt()  // 0: empty, 1: low cover, 2: high cover
 				);
 		grid.determineCoverArea();
@@ -135,20 +136,45 @@ class Brain {
 		this.player = player;
 	}
 
-	public void think() {
+	public void think(Grid grid) {
+		final int[][] totalDamage = new int[grid.getWidth()][grid.getHeight()];
+		final List<Agent> otherAgents = Arrays.stream(player.getAgents())
+				.filter(Objects::nonNull)
+				.filter(a -> a.getPlayerId() != player.getMyId())
+				.toList();
+		for (int y = 0; y < grid.getHeight(); y++)
+			for (int x = 0; x < grid.getWidth(); x++)
+				for (Agent a : otherAgents)
+					totalDamage[x][y] += a.getDamageArea()[x][y];
+
 		final List<Agent> myAgents = Arrays.stream(player.getAgents())
 				.filter(Objects::nonNull)
 				.filter(a -> a.getPlayerId() == player.getMyId())
 				.toList();
-
-		final List<Agent> otherAgents = Arrays.stream(player.getAgents())
-				.filter(Objects::nonNull)
-				.filter(a -> a.getPlayerId() != player.getMyId())
-				.sorted((a1, a2) -> Integer.compare(a2.getWetness(), a1.getWetness()))
-				.toList();
-
 		for (Agent a : myAgents) {
-			a.setMoveAction(null);
+			int x = a.getCoordinates().x(), y = a.getCoordinates().y();
+			Pair destination = null;
+			int bestCoverValue = Integer.MAX_VALUE, temp;
+			if (x > 0 && grid.getTiles()[x - 1][y].getType() == Tile.Type.EMPTY
+					&& (temp = grid.getTiles()[x - 1][y].getDamage(totalDamage)) < bestCoverValue) {
+				bestCoverValue = temp;
+				destination = grid.getTiles()[x - 1][y].getCoordinates(); // left
+			}
+			if (x < grid.getWidth() - 1 && grid.getTiles()[x + 1][y].getType() == Tile.Type.EMPTY
+					&& (temp = grid.getTiles()[x + 1][y].getDamage(totalDamage)) < bestCoverValue) {
+				bestCoverValue = temp;
+				destination = grid.getTiles()[x + 1][y].getCoordinates(); // right
+			}
+			if (y > 0 && grid.getTiles()[x][y - 1].getType() == Tile.Type.EMPTY
+					&& (temp = grid.getTiles()[x][y - 1].getDamage(totalDamage)) < bestCoverValue) {
+				bestCoverValue = temp;
+				destination = grid.getTiles()[x][y - 1].getCoordinates(); // top
+			}
+			if (y < grid.getHeight() - 1 && grid.getTiles()[x][y + 1].getType() == Tile.Type.EMPTY
+					&& grid.getTiles()[x][y + 1].getDamage(totalDamage) < bestCoverValue)
+				destination = grid.getTiles()[x][y + 1].getCoordinates(); // bottom
+
+			a.setMoveAction(Command.MOVE.formCommand(null, destination, null));
 			a.setCombatAction(Command.SHOOT.formCommand(otherAgents.get(0), null, null));
 			a.setMessageAction( player.getGameTurn() == 1
 					? Command.MESSAGE.formCommand(null, null, "gl hf")
@@ -172,39 +198,39 @@ enum Command {
 
 	MOVE ("MOVE ") {
 		@Override
-		StringJoiner construct(StringJoiner sj, Agent target, Pair coord, String text) {
-			return sj.add(coord.toString());
-		}; },
+		StringJoiner construct(StringJoiner sj, Agent target, Pair coordinates, String text) {
+			return sj.add(coordinates.toString());
+		} },
 	SHOOT ("SHOOT ") {
 		@Override
-		StringJoiner construct(StringJoiner sj, Agent target, Pair coord, String text) {
+		StringJoiner construct(StringJoiner sj, Agent target, Pair coordinates, String text) {
 			return sj.add(Integer.toString(target.getAgentId()));
-		}; },
+		} },
 	THROW ("THROW ") {
 		@Override
-		StringJoiner construct(StringJoiner sj, Agent target, Pair coord, String text) {
-			return sj.add(coord.toString());
-		}; },
+		StringJoiner construct(StringJoiner sj, Agent target, Pair coordinates, String text) {
+			return sj.add(coordinates.toString());
+		} },
 	HUNKER_DOWN ("HUNKER_DOWN") {
 		@Override
-		StringJoiner construct(StringJoiner sj, Agent target, Pair coord, String text) {
+		StringJoiner construct(StringJoiner sj, Agent target, Pair coordinates, String text) {
 			return sj;
-		}; },
+		} },
 	MESSAGE ("MESSAGE ") {
 		@Override
-		StringJoiner construct(StringJoiner sj, Agent target, Pair coord, String text) {
+		StringJoiner construct(StringJoiner sj, Agent target, Pair coordinates, String text) {
 			return sj.add(text);
-		}; };
+		} };
 
 	private final String command;
 
 	Command(String command) { this.command = command; }
 
-	String formCommand(Agent target, Pair coord, String text) {
-		return construct(new StringJoiner(" ", command, ""), target, coord, text).toString();
+	String formCommand(Agent target, Pair coordinates, String text) {
+		return construct(new StringJoiner(" ", command, ""), target, coordinates, text).toString();
 	}
 
-	abstract StringJoiner construct(StringJoiner sj, Agent target, Pair coord, String text);
+	abstract StringJoiner construct(StringJoiner sj, Agent target, Pair coordinates, String text);
 }
 
 class Agent {
@@ -215,7 +241,7 @@ class Agent {
 	private final int optimalRange;
 	private final int soakingPower;
 
-	private Pair coord;
+	private Pair coordinates;
 	private int cooldown;
 	private int splashBombs;
 	private int wetness;
@@ -240,21 +266,27 @@ class Agent {
 	}
 
 	public void setAgent(
-			Pair coord,
+			Pair coordinates,
 			int cooldown,
 			int splashBombs,
-			int wetness) {
-		this.coord = coord;
+			int wetness,
+			Grid grid) {
+		this.coordinates = coordinates;
 		this.cooldown = cooldown;
 		this.splashBombs = splashBombs;
 		this.wetness = wetness;
+		calculateDamageArea(grid);
 	}
 
 	public int getAgentId() { return agentId; }
 
 	public int getPlayerId() { return playerId;	}
 
+	public Pair getCoordinates() { return coordinates; }
+
 	public int getWetness() { return wetness; }
+
+	public int[][] getDamageArea() { return damageArea;	}
 
 	public void setMoveAction(String moveAction) { this.moveAction = moveAction; }
 
@@ -263,10 +295,10 @@ class Agent {
 	public void setMessageAction(String messageAction) { this.messageAction = messageAction; }
 
 	public int compareDistanceToTarget(Agent a, Pair target) {
-		return Integer.compare(this.coord.distanceTo(target), a.coord.distanceTo(target));
+		return Integer.compare(this.coordinates.distanceTo(target), a.coordinates.distanceTo(target));
 	}
 
-	public int[][] getDamageAre(Grid grid) {
+	public void calculateDamageArea(Grid grid) {
 		final int width = grid.getWidth();
 		final int height = grid.getHeight();
 		damageArea = new int[width][height];
@@ -276,8 +308,8 @@ class Agent {
 				Tile.Type type = grid.getTiles()[x][y].getType();
 				if (type != Tile.Type.EMPTY)
 					continue;
-				final Pair p = grid.getTiles()[x][y].getCoord();
-				final int dist = coord.distanceTo(p);
+				final Pair p = grid.getTiles()[x][y].getCoordinates();
+				final int dist = coordinates.distanceTo(p);
 				if (dist <= optimalRange)
 					damageArea[x][y] = soakingPower;
 				else if (dist <= 2 * optimalRange)
@@ -288,8 +320,6 @@ class Agent {
 				else if (cover == Tile.Type.LOW_COVER)
 					damageArea[x][y] /= 2;
 			}
-
-		return damageArea;
 	}
 
 	public String buildCommands(Player player) {
@@ -339,14 +369,14 @@ class Grid {
 		for (int x1 = 0; x1 < width; x1++)
 			for (int y1 = 0; y1 < height; y1++) {
 				final Tile.Type[][] coverArea = new Tile.Type[width][height];
-				final Pair from = tiles[x1][y1].getCoord();
+				final Pair from = tiles[x1][y1].getCoordinates();
 
 				if (x1 > 0) {
 					final Tile.Type cover = tiles[x1 - 1][y1].getType(); // left cover
 					if (cover != Tile.Type.EMPTY)
 						for (int y = 0; y < height; y++)
 							for (int x = 0; x < x1 - 1; x++)
-								if ((Math.abs(y - y1) <= x1 - x) && from.distanceTo(tiles[x][y].getCoord()) > 2)
+								if ((Math.abs(y - y1) <= x1 - x) && from.distanceTo(tiles[x][y].getCoordinates()) > 2)
 									if (cover == Tile.Type.HIGH_COVER)
 										coverArea[x][y] = cover;
 									else if (cover == Tile.Type.LOW_COVER && coverArea[x][y] == Tile.Type.EMPTY)
@@ -357,7 +387,7 @@ class Grid {
 					if (cover != Tile.Type.EMPTY)
 						for (int y = 0; y < height; y++)
 							for (int x = width - 1; x > x1 + 1; x--)
-								if ((Math.abs(y - y1) <= x - x1) && from.distanceTo(tiles[x][y].getCoord()) > 2)
+								if ((Math.abs(y - y1) <= x - x1) && from.distanceTo(tiles[x][y].getCoordinates()) > 2)
 									if (cover == Tile.Type.HIGH_COVER)
 										coverArea[x][y] = cover;
 									else if (cover == Tile.Type.LOW_COVER && coverArea[x][y] == Tile.Type.EMPTY)
@@ -368,7 +398,7 @@ class Grid {
 					if (cover != Tile.Type.EMPTY)
 						for (int x = 0; x < width; x++)
 							for (int y = 0; y < y1 - 1; y++)
-								if ((Math.abs(x - x1) <= y1 - y) && from.distanceTo(tiles[x][y].getCoord()) > 2)
+								if ((Math.abs(x - x1) <= y1 - y) && from.distanceTo(tiles[x][y].getCoordinates()) > 2)
 									if (cover == Tile.Type.HIGH_COVER)
 										coverArea[x][y] = cover;
 									else if (cover == Tile.Type.LOW_COVER && coverArea[x][y] == Tile.Type.EMPTY)
@@ -379,7 +409,7 @@ class Grid {
 					if (cover != Tile.Type.EMPTY)
 						for (int x = 0; x < width; x++)
 							for (int y = height - 1; y > y1 + 1; y--)
-								if ((Math.abs(x - x1) <= y - y1) && from.distanceTo(tiles[x][y].getCoord()) > 2)
+								if ((Math.abs(x - x1) <= y - y1) && from.distanceTo(tiles[x][y].getCoordinates()) > 2)
 									if (cover == Tile.Type.HIGH_COVER)
 										coverArea[x][y] = cover;
 									else if (cover == Tile.Type.LOW_COVER && coverArea[x][y] == Tile.Type.EMPTY)
@@ -393,21 +423,19 @@ class Grid {
 
 class Tile {
 
-	private final Pair coord;
+	private final Pair coordinates;
 	private final Type t;
 
 	public enum Type {
 
-		EMPTY     (0),
-		LOW_COVER  (1),
-		HIGH_COVER (2);
-
-		Type(int code) { }
+		EMPTY     ,
+		LOW_COVER ,
+		HIGH_COVER
 
 	}
 
 	public Tile(int x, int y, int type) {
-		this.coord = new Pair(x, y);
+		this.coordinates = new Pair(x, y);
 		switch (type) {
 			case 1: t = Type.LOW_COVER; break;
 			case 2: t = Type.HIGH_COVER; break;
@@ -415,9 +443,13 @@ class Tile {
 		}
 	}
 
-	public Pair getCoord() { return coord; }
+	public Pair getCoordinates() { return coordinates; }
 
 	public Type getType() { return t; }
+	
+	int getDamage(int[][] damageArea) {
+		return damageArea[coordinates.x()][coordinates.y()];
+	}
 
 }
 
