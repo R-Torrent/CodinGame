@@ -45,7 +45,6 @@ class Player {
 		for ( ; gameTurn <= limitGameTurns; gameTurn++) {
 			grid.resetAgentsPresent();
 			loadTurn();
-			SplashBomb.determineAllSplashBombs(grid);
 			overmind.think(grid);
 
 			// Write an action using System.out.println()
@@ -62,7 +61,7 @@ class Player {
 					.filter(Agent::isMyPlayer)
 					.map(a -> {
 						StringJoiner commands = new StringJoiner(";",
-                                a.getAgentId() + ";", "");
+								a.getAgentId() + ";", "");
 						commands.add(Command.MESSAGE.formCommand(null, null, gameTurn == 1
 								? "gl hf"
 								: "brain dead"));
@@ -153,6 +152,8 @@ class Brain {
 				.filter(Agent::isMyPlayer)
 				.toList();
 
+		SplashBomb.determineAllSplashBombs(grid);
+
 		for (Agent a : myAgents) {
 			final Map<Tile, Double> splashBombLocationAppraisal = new HashMap<>(grid.getTotalTiles());
 
@@ -160,22 +161,25 @@ class Brain {
 					.filter(e -> e.getValue().getTotalFriendlyWater() == 0)
 					.forEach(e -> {
 						final int x1 = e.getKey().getCoordinates().x(), y1 = e.getKey().getCoordinates().y();
-						for (int x = Math.max(x1 - 4, 0); x <= Math.min(x1 + 4, grid.getWidth() - 1); x++)
-							for (int y = Math.max(y1 - Math.max(4 - Math.abs(x - x1), 0), 0);
-								 y <= Math.min(y1 + Math.max(4 - Math.abs(x - x1), 0), grid.getHeight() - 1);
-								 y++) {
-								final int d = player.getGrid().getDistances(a.getTile(), grid.getTiles()[x][y]);
-								if (d < Integer.MAX_VALUE) splashBombLocationAppraisal.merge(
-										e.getKey(),
-										e.getValue().getTotalFoeWater()
-												/ Math.pow(player.getGrid().getDistances(a.getTile(), e.getKey()), 1.5),
-										Double::sum);
+						for (int x = Math.max(x1 - 4, 0); x <= Math.min(x1 + 4, grid.getWidth() - 1); x++) {
+							final int ySpan = Math.max(4 - Math.abs(x - x1), 0);
+							for (int y = Math.max(y1 - ySpan, 0);
+									y <= Math.min(y1 + ySpan, grid.getHeight() - 1); y++) {
+								final Tile t = grid.getTiles()[x][y];
+								final int d = grid.getDistances(a.getTile(), t);
+								if (d < Integer.MAX_VALUE)
+									splashBombLocationAppraisal.merge(t,
+											e.getValue().getTotalFoeWater() / Math.pow(d, 1.5),
+											Double::sum);
 							}
+						}
 					});
 			a.setIntendedMove(splashBombLocationAppraisal.entrySet().stream()
 					.max(Map.Entry.comparingByValue())
 					.map(Map.Entry::getKey)
-					.map(destination -> grid.getPath(a.getTile(), destination).getFirst())
+					.map(destination -> grid.getPath(a.getTile(), destination))
+					.filter(Predicate.not(List::isEmpty))
+					.map(List::getFirst)
 					.orElse(null));
 		}
 
@@ -199,27 +203,27 @@ enum Command {
 
 	MOVE ("MOVE ") {
 		@Override
-		StringJoiner construct(StringJoiner sj, Agent target, Tile coordinates, String text) {
-			return sj.add(coordinates.toString());
+		StringJoiner construct(StringJoiner sj, Agent agent, Tile moveTo, String string) {
+			return sj.add(moveTo.getCoordinates().toString());
 		} },
 	SHOOT ("SHOOT ") {
 		@Override
-		StringJoiner construct(StringJoiner sj, Agent target, Tile coordinates, String text) {
-			return sj.add(Integer.toString(target.getAgentId()));
+		StringJoiner construct(StringJoiner sj, Agent shootAt, Tile tile, String string) {
+			return sj.add(Integer.toString(shootAt.getAgentId()));
 		} },
 	THROW ("THROW ") {
 		@Override
-		StringJoiner construct(StringJoiner sj, Agent target, Tile coordinates, String text) {
-			return sj.add(coordinates.toString());
+		StringJoiner construct(StringJoiner sj, Agent agent, Tile throwAt, String string) {
+			return sj.add(throwAt.getCoordinates().toString());
 		} },
 	HUNKER_DOWN ("HUNKER_DOWN") {
 		@Override
-		StringJoiner construct(StringJoiner sj, Agent target, Tile coordinates, String text) {
+		StringJoiner construct(StringJoiner sj, Agent agent, Tile tile, String string) {
 			return sj;
 		} },
 	MESSAGE ("MESSAGE ") {
 		@Override
-		StringJoiner construct(StringJoiner sj, Agent target, Tile coordinates, String text) {
+		StringJoiner construct(StringJoiner sj, Agent agent, Tile tile, String text) {
 			return sj.add(text);
 		} };
 
@@ -227,11 +231,11 @@ enum Command {
 
 	Command(String command) { this.command = command; }
 
-	String formCommand(Agent target, Tile coordinates, String text) {
-		return construct(new StringJoiner(" ", command, ""), target, coordinates, text).toString();
+	String formCommand(Agent agent, Tile tile, String string) {
+		return construct(new StringJoiner(" ", command, ""), agent, tile, string).toString();
 	}
 
-	abstract StringJoiner construct(StringJoiner sj, Agent target, Tile coordinates, String text);
+	abstract StringJoiner construct(StringJoiner sj, Agent agent, Tile tile, String string);
 }
 
 class Agent {
@@ -383,9 +387,6 @@ class Grid {
 		tiles = new Tile[width][height];
 		coverAreaMap = new HashMap<>(totalTiles);
 		distances = new int[totalTiles][totalTiles];
-		for (int i = 0; i < totalTiles; i++)
-			for (int j = 0; j < totalTiles; j++)
-				distances[i][j] = i == j ? 0 : Integer.MAX_VALUE;
 		previous = new Tile[totalTiles][totalTiles];
 	}
 
@@ -455,30 +456,37 @@ class Grid {
 	}
 
 	public void determinePathing() {
+		for (int i = 0; i < totalTiles; i++)
+			for (int j = 0; j < totalTiles; j++) {
+				if (i == j)
+					continue;
+				distances[i][j] = Integer.MAX_VALUE;
+			}
+
 		for (int x = 0; x < width; x++)
 			for (int y = 0; y < height; y++) {
 				final Tile t = tiles[x][y];
-				Tile t1;
+				previous[t.getIndex()][t.getIndex()] = t;
 				if (t.getType() != Tile.Type.EMPTY)
 					continue;
-				previous[t.getIndex()][t.getIndex()] = t;
-				if (x > 0 && (t1 = tiles[x - 1][y]).getType() != Tile.Type.EMPTY) {
+				Tile t1;
+				if (x > 0 && (t1 = tiles[x - 1][y]).getType() == Tile.Type.EMPTY) {
 					t.setNeighbor(Tile.Neighbor.LEFT, t1);
 					distances[t.getIndex()][t1.getIndex()] = 1;
 					previous[t.getIndex()][t1.getIndex()] = t;
 				}
-				if (x < width - 1 && (t1 = tiles[x + 1][y]).getType() != Tile.Type.EMPTY) {
-					t.setNeighbor(Tile.Neighbor.RIGHT, tiles[x + 1][y]);
+				if (x < width - 1 && (t1 = tiles[x + 1][y]).getType() == Tile.Type.EMPTY) {
+					t.setNeighbor(Tile.Neighbor.RIGHT, t1);
 					distances[t.getIndex()][t1.getIndex()] = 1;
 					previous[t.getIndex()][t1.getIndex()] = t;
 				}
-				if (y > 0 && (t1 = tiles[x][y - 1]).getType() != Tile.Type.EMPTY) {
-					t.setNeighbor(Tile.Neighbor.TOP, tiles[x][y - 1]);
+				if (y > 0 && (t1 = tiles[x][y - 1]).getType() == Tile.Type.EMPTY) {
+					t.setNeighbor(Tile.Neighbor.TOP, t1);
 					distances[t.getIndex()][t1.getIndex()] = 1;
 					previous[t.getIndex()][t1.getIndex()] = t;
 				}
-				if (y < height - 1 && (t1 = tiles[x][y + 1]).getType() != Tile.Type.EMPTY) {
-					t.setNeighbor(Tile.Neighbor.BOTTOM, tiles[x][y + 1]);
+				if (y < height - 1 && (t1 = tiles[x][y + 1]).getType() == Tile.Type.EMPTY) {
+					t.setNeighbor(Tile.Neighbor.BOTTOM, t1);
 					distances[t.getIndex()][t1.getIndex()] = 1;
 					previous[t.getIndex()][t1.getIndex()] = t;
 				}
@@ -486,6 +494,8 @@ class Grid {
 		for (int k = 0; k < totalTiles; k++)
 			for (int i = 0; i < totalTiles; i++)
 				for (int j = 0; j < totalTiles; j++) {
+					if (distances[i][k] == Integer.MAX_VALUE || distances[k][j] == Integer.MAX_VALUE)
+						continue;
 					final int d = distances[i][k] + distances[k][j];
 					if (distances[i][j] > d) {
 						distances[i][j] = d;
