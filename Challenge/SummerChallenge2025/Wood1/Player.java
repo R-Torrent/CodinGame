@@ -1,6 +1,5 @@
 import java.util.*;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 
 /*
  * Summer Challenge 2025
@@ -56,9 +55,8 @@ class Player {
 	}
 
 	private void deadBrain() {
-		// game loop
-		for ( ; gameTurn <= limitGameTurns; gameTurn++) {
-			loadTurn();
+		// dead game loop
+		while (true) {
 			Arrays.stream(agents)
 					.filter(Objects::nonNull)
 					.filter(Agent::isMyPlayer)
@@ -71,6 +69,9 @@ class Player {
 						commands.add(Command.HUNKER_DOWN.formCommand(null, null, ""));
 						return commands.toString(); })
 					.forEach(System.out::println);
+			if (++gameTurn > limitGameTurns)
+				break;
+			loadTurn();
 		}
 	}
 
@@ -153,31 +154,33 @@ class Brain {
 				.toList();
 
 		for (Agent a : myAgents) {
-			final Map<Tile, Double> splashBombAppraisal = SplashBomb.gridBombing.entrySet().stream()
-					.filter(e -> e.getValue().getTotalFriendlyWater() == 0
-							&& player.getGrid().getDistances(a.getTile(), e.getKey()) < Integer.MAX_VALUE)
-					.map(e -> new AbstractMap.SimpleEntry<Tile, Double>(
-							e.getKey(),
-							e.getValue().getTotalFoeWater()
-									/ Math.pow(player.getGrid().getDistances(a.getTile(), e.getKey()), 1.5)))
-					.sorted(Map.Entry.comparingByValue())
-					.collect(Collectors.toMap(
-							Map.Entry::getKey,
-							Map.Entry::getValue,
-							(d1, d2) -> { throw new RuntimeException("Duplicity of keys"); },
-							LinkedHashMap::new));
-			final Iterator<Map.Entry<Tile, Double>> it = splashBombAppraisal.entrySet().iterator();
-			final Tile desiredTarget = it.hasNext() ? it.next().getKey() : null;
+			final Map<Tile, Double> splashBombLocationAppraisal = new HashMap<>(grid.getTotalTiles());
 
-			a.setMoveAction(Command.MOVE.formCommand(null, destinationM, null));
-			if (desiredTarget != null)
-				a.setCombatAction(Command.THROW.formCommand(null, destinationT, null));
-			else
-				a.setCombatAction(Command.HUNKER_DOWN.formCommand(null, null, ""));
-			a.setMessageAction( player.getGameTurn() == 1
-					? Command.MESSAGE.formCommand(null, null, "gl hf")
-					: null);
+			SplashBomb.gridBombing.entrySet().stream()
+					.filter(e -> e.getValue().getTotalFriendlyWater() == 0)
+					.forEach(e -> {
+						final int x1 = e.getKey().getCoordinates().x(), y1 = e.getKey().getCoordinates().y();
+						for (int x = Math.max(x1 - 4, 0); x <= Math.min(x1 + 4, grid.getWidth() - 1); x++)
+							for (int y = Math.max(y1 - Math.max(4 - Math.abs(x - x1), 0), 0);
+								 y <= Math.min(y1 + Math.max(4 - Math.abs(x - x1), 0), grid.getHeight() - 1);
+								 y++) {
+								final int d = player.getGrid().getDistances(a.getTile(), grid.getTiles()[x][y]);
+								if (d < Integer.MAX_VALUE) splashBombLocationAppraisal.merge(
+										e.getKey(),
+										e.getValue().getTotalFoeWater()
+												/ Math.pow(player.getGrid().getDistances(a.getTile(), e.getKey()), 1.5),
+										Double::sum);
+							}
+					});
+			a.setIntendedMove(splashBombLocationAppraisal.entrySet().stream()
+					.max(Map.Entry.comparingByValue())
+					.map(Map.Entry::getKey)
+					.map(destination -> grid.getPath(a.getTile(), destination).getFirst())
+					.orElse(null));
 		}
+
+		for (Agent a : myAgents)
+			 a.setCommands(player);
 	}
 
 	public List<String> issueCommands() {
@@ -243,6 +246,9 @@ class Agent {
 	private int cooldown;
 	private int splashBombs;
 	private int wetness;
+
+	private Tile intendedMove;
+	private Tile intendedSplashBombTile;
 	private String moveAction;
 	private String combatAction;
 	private String messageAction;
@@ -272,6 +278,12 @@ class Agent {
 		this.cooldown = cooldown;
 		this.splashBombs = splashBombs;
 		this.wetness = wetness;
+
+		intendedMove = null;
+		intendedSplashBombTile = null;
+		moveAction = null;
+		combatAction = null;
+		messageAction = null;
 	}
 
 	public int getAgentId() { return agentId; }
@@ -279,6 +291,8 @@ class Agent {
 	public Tile getTile() { return tile; }
 
 	public int getWetness() { return wetness; }
+
+	public void setIntendedMove(Tile intendedMove) { this.intendedMove = intendedMove; }
 
 	public void setMoveAction(String moveAction) { this.moveAction = moveAction; }
 
@@ -322,6 +336,17 @@ class Agent {
 
 	public int calculateShootDamageOnTarget(Grid grid, Agent target) {
 		return calculateShootDamageArea(grid)[target.tile.getCoordinates().x()][target.tile.getCoordinates().y()];
+	}
+
+	public void setCommands(Player player) {
+		if (intendedMove != null)
+			moveAction = Command.MOVE.formCommand(null, intendedMove, null);
+		if (intendedSplashBombTile != null)
+			combatAction = Command.THROW.formCommand(null, intendedSplashBombTile, null);
+		else
+			combatAction = Command.HUNKER_DOWN.formCommand(null, null, "");
+		if (player.getGameTurn() == 1)
+			messageAction = Command.MESSAGE.formCommand(null, null, "gl hf");
 	}
 
 	public String buildCommands(Player player) {
@@ -615,8 +640,8 @@ class SplashBomb {
 		for (int x1 = 0; x1 < grid.getWidth(); x1++)
 			for (int y1 = 0; y1 < grid.getHeight(); y1++) {
 				SplashBomb bomb = new SplashBomb(grid.getTiles()[x1][y1]);
-				for (int x = Math.max(x1 - 1, 0); x < Math.min(x1 + 2, grid.getWidth()); x++)
-					for (int y = Math.max(y1 - 1, 0); y < Math.min(y1 + 2, grid.getHeight()); y++)
+				for (int x = Math.max(x1 - 1, 0); x <= Math.min(x1 + 1, grid.getWidth() - 1); x++)
+					for (int y = Math.max(y1 - 1, 0); y <= Math.min(y1 + 1, grid.getHeight() - 1); y++)
 						Optional.ofNullable(grid.getTiles()[x][y].getAgentPresent())
 								.ifPresent(a ->  {
 									if (a.isMyPlayer())
