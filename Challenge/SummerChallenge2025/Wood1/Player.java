@@ -1,5 +1,6 @@
 import java.util.*;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 /*
  * Summer Challenge 2025
@@ -81,7 +82,7 @@ class Player {
 			stillAlive[agentId - 1] = true;
 			Tile tile = grid.getTiles()[in.nextInt()][in.nextInt()]; // [x, y]
 			agents[agentId - 1].setAgent(
-					tile.getCoordinates(),
+					tile,
 					in.nextInt(), // Number of turns before this agent can shoot
 					in.nextInt(), // splashBombs remaining
 					in.nextInt()  // Damage (0-100) this agent has taken
@@ -125,8 +126,6 @@ class Player {
 		overmind = new Brain(this);
 	}
 
-	public int getMyId() { return myId;	}
-
 	public Agent[] getAgents() { return agents; }
 
 	public Grid getGrid() {	return grid; }
@@ -144,62 +143,37 @@ class Brain {
 	}
 
 	public void think(Grid grid) {
-		final int[][] totalDamage = new int[grid.getWidth()][grid.getHeight()];
 		final List<Agent> otherAgents = Arrays.stream(player.getAgents())
 				.filter(Objects::nonNull)
 				.filter(Predicate.not(Agent::isMyPlayer))
 				.toList();
-		for (int y = 0; y < grid.getHeight(); y++)
-			for (int x = 0; x < grid.getWidth(); x++)
-				for (Agent a : otherAgents)
-					totalDamage[x][y] += a.calculateShootDamageArea(player.getGrid())[x][y];
-
 		final List<Agent> myAgents = Arrays.stream(player.getAgents())
 				.filter(Objects::nonNull)
 				.filter(Agent::isMyPlayer)
 				.toList();
-		for (Agent a : myAgents) {
-			int x = a.getCoordinates().x(), y = a.getCoordinates().y();
-			Pair destination = null;
-			int bestCoverValue = Integer.MAX_VALUE, temp;
-			if (x > 0) {
-				Tile t = grid.getTiles()[x - 1][y];
-				if (t.getType() == Tile.Type.EMPTY && (temp = t.getDamage(totalDamage)) < bestCoverValue) {
-					bestCoverValue = temp;
-					destination = t.getCoordinates(); // move left
-				}
-			}
-			if (x < grid.getWidth() - 1) {
-				Tile t = grid.getTiles()[x + 1][y];
-				if (t.getType() == Tile.Type.EMPTY && (temp = t.getDamage(totalDamage)) < bestCoverValue) {
-					bestCoverValue = temp;
-					destination = t.getCoordinates(); // move right
-				}
-			}
-			if (y > 0) {
-				Tile t = grid.getTiles()[x][y - 1];
-				if (t.getType() == Tile.Type.EMPTY && (temp = t.getDamage(totalDamage)) < bestCoverValue) {
-					bestCoverValue = temp;
-					destination = t.getCoordinates(); // move up
-				}
-			}
-			if (y < grid.getHeight() - 1) {
-				Tile t = grid.getTiles()[x][y + 1];
-				if (t.getType() == Tile.Type.EMPTY && t.getDamage(totalDamage) < bestCoverValue)
-					destination = t.getCoordinates(); // move down
-			}
-			Agent target = null;
-			int maximumDamageInflicted = Integer.MIN_VALUE;
-			for (Agent a1 : otherAgents) {
-				temp = a.calculateShootDamageOnTarget(grid, destination, a1);
-				if (temp > maximumDamageInflicted) {
-					maximumDamageInflicted = temp;
-					target = a1;
-				}
-			}
 
-			a.setMoveAction(Command.MOVE.formCommand(null, destination, null));
-			a.setCombatAction(Command.SHOOT.formCommand(target, null, null));
+		for (Agent a : myAgents) {
+			final Map<Tile, Double> splashBombAppraisal = SplashBomb.gridBombing.entrySet().stream()
+					.filter(e -> e.getValue().getTotalFriendlyWater() == 0
+							&& player.getGrid().getDistances(a.getTile(), e.getKey()) < Integer.MAX_VALUE)
+					.map(e -> new AbstractMap.SimpleEntry<Tile, Double>(
+							e.getKey(),
+							e.getValue().getTotalFoeWater()
+									/ Math.pow(player.getGrid().getDistances(a.getTile(), e.getKey()), 1.5)))
+					.sorted(Map.Entry.comparingByValue())
+					.collect(Collectors.toMap(
+							Map.Entry::getKey,
+							Map.Entry::getValue,
+							(d1, d2) -> { throw new RuntimeException("Duplicity of keys"); },
+							LinkedHashMap::new));
+			final Iterator<Map.Entry<Tile, Double>> it = splashBombAppraisal.entrySet().iterator();
+			final Tile desiredTarget = it.hasNext() ? it.next().getKey() : null;
+
+			a.setMoveAction(Command.MOVE.formCommand(null, destinationM, null));
+			if (desiredTarget != null)
+				a.setCombatAction(Command.THROW.formCommand(null, destinationT, null));
+			else
+				a.setCombatAction(Command.HUNKER_DOWN.formCommand(null, null, ""));
 			a.setMessageAction( player.getGameTurn() == 1
 					? Command.MESSAGE.formCommand(null, null, "gl hf")
 					: null);
@@ -222,27 +196,27 @@ enum Command {
 
 	MOVE ("MOVE ") {
 		@Override
-		StringJoiner construct(StringJoiner sj, Agent target, Pair coordinates, String text) {
+		StringJoiner construct(StringJoiner sj, Agent target, Tile coordinates, String text) {
 			return sj.add(coordinates.toString());
 		} },
 	SHOOT ("SHOOT ") {
 		@Override
-		StringJoiner construct(StringJoiner sj, Agent target, Pair coordinates, String text) {
+		StringJoiner construct(StringJoiner sj, Agent target, Tile coordinates, String text) {
 			return sj.add(Integer.toString(target.getAgentId()));
 		} },
 	THROW ("THROW ") {
 		@Override
-		StringJoiner construct(StringJoiner sj, Agent target, Pair coordinates, String text) {
+		StringJoiner construct(StringJoiner sj, Agent target, Tile coordinates, String text) {
 			return sj.add(coordinates.toString());
 		} },
 	HUNKER_DOWN ("HUNKER_DOWN") {
 		@Override
-		StringJoiner construct(StringJoiner sj, Agent target, Pair coordinates, String text) {
+		StringJoiner construct(StringJoiner sj, Agent target, Tile coordinates, String text) {
 			return sj;
 		} },
 	MESSAGE ("MESSAGE ") {
 		@Override
-		StringJoiner construct(StringJoiner sj, Agent target, Pair coordinates, String text) {
+		StringJoiner construct(StringJoiner sj, Agent target, Tile coordinates, String text) {
 			return sj.add(text);
 		} };
 
@@ -250,11 +224,11 @@ enum Command {
 
 	Command(String command) { this.command = command; }
 
-	String formCommand(Agent target, Pair coordinates, String text) {
+	String formCommand(Agent target, Tile coordinates, String text) {
 		return construct(new StringJoiner(" ", command, ""), target, coordinates, text).toString();
 	}
 
-	abstract StringJoiner construct(StringJoiner sj, Agent target, Pair coordinates, String text);
+	abstract StringJoiner construct(StringJoiner sj, Agent target, Tile coordinates, String text);
 }
 
 class Agent {
@@ -265,7 +239,7 @@ class Agent {
 	private final int optimalRange;
 	private final int soakingPower;
 
-	private Pair coordinates;
+	private Tile tile;
 	private int cooldown;
 	private int splashBombs;
 	private int wetness;
@@ -290,11 +264,11 @@ class Agent {
 	}
 
 	public void setAgent(
-			Pair coordinates,
+			Tile tile,
 			int cooldown,
 			int splashBombs,
 			int wetness) {
-		this.coordinates = coordinates;
+		this.tile = tile;
 		this.cooldown = cooldown;
 		this.splashBombs = splashBombs;
 		this.wetness = wetness;
@@ -302,7 +276,7 @@ class Agent {
 
 	public int getAgentId() { return agentId; }
 
-	public Pair getCoordinates() { return coordinates; }
+	public Tile getTile() { return tile; }
 
 	public int getWetness() { return wetness; }
 
@@ -314,11 +288,7 @@ class Agent {
 
 	public boolean isMyPlayer() { return myPlayer; }
 
-	public int compareDistanceToTarget(Agent a, Pair target) {
-		return Integer.compare(this.coordinates.distanceTo(target), a.coordinates.distanceTo(target));
-	}
-
-	public int[][] calculateShootDamageArea(Grid grid, Pair from) {
+	public int[][] calculateShootDamageArea(Grid grid, Tile from) {
 		final int width = grid.getWidth();
 		final int height = grid.getHeight();
 		int[][] damageArea = new int[width][height];
@@ -326,12 +296,13 @@ class Agent {
 		for (int y = 0; y < height; y++)
 			for (int x = 0; x < width; x++) {
 				final Pair target = grid.getTiles()[x][y].getCoordinates();
-				final int dist = from.distanceTo(target);
+				final int dist = from.getCoordinates().distanceTo(target);
 				if (dist <= optimalRange)
 					damageArea[x][y] = soakingPower;
 				else if (dist <= 2 * optimalRange)
 					damageArea[x][y] = soakingPower / 2;
-				Tile.Type cover = grid.getCoverAreaMap().get(target)[from.x()][from.y()];
+				Tile.Type cover = grid.getCoverAreaMap()
+						.get(target)[from.getCoordinates().x()][from.getCoordinates().y()];
 				if (cover == Tile.Type.HIGH_COVER)
 					damageArea[x][y] /= 4;
 				else if (cover == Tile.Type.LOW_COVER)
@@ -342,15 +313,15 @@ class Agent {
 	}
 
 	public int[][] calculateShootDamageArea(Grid grid) {
-		return calculateShootDamageArea(grid, coordinates);
+		return calculateShootDamageArea(grid, tile);
 	}
 
-	public int calculateShootDamageOnTarget(Grid grid, Pair from, Agent target) {
-		return calculateShootDamageArea(grid, from)[target.coordinates.x()][target.coordinates.y()];
+	public int calculateShootDamageOnTarget(Grid grid, Tile from, Agent target) {
+		return calculateShootDamageArea(grid, from)[target.tile.getCoordinates().x()][target.tile.getCoordinates().y()];
 	}
 
 	public int calculateShootDamageOnTarget(Grid grid, Agent target) {
-		return calculateShootDamageArea(grid)[target.coordinates.x()][target.coordinates.y()];
+		return calculateShootDamageArea(grid)[target.tile.getCoordinates().x()][target.tile.getCoordinates().y()];
 	}
 
 	public String buildCommands(Player player) {
@@ -624,14 +595,14 @@ record Pair(int x, int y) {
 
 class SplashBomb {
 
-	int totalFoeWater;
-	int totalFriendlyWater;
+	private int totalFoeWater;
+	private int totalFriendlyWater;
 
-	public static Map<Pair, SplashBomb> gridBombing;
+	public static Map<Tile, SplashBomb> gridBombing;
 	public static final int bombWetness = 30;
 
-	private SplashBomb(Pair coordinates) {
-		gridBombing.put(coordinates, this);
+	private SplashBomb(Tile tile) {
+		gridBombing.put(tile, this);
 	}
 
 	public int getTotalFoeWater() { return totalFoeWater; }
@@ -643,7 +614,7 @@ class SplashBomb {
 
 		for (int x1 = 0; x1 < grid.getWidth(); x1++)
 			for (int y1 = 0; y1 < grid.getHeight(); y1++) {
-				SplashBomb bomb = new SplashBomb(grid.getTiles()[x1][y1].getCoordinates());
+				SplashBomb bomb = new SplashBomb(grid.getTiles()[x1][y1]);
 				for (int x = Math.max(x1 - 1, 0); x < Math.min(x1 + 2, grid.getWidth()); x++)
 					for (int y = Math.max(y1 - 1, 0); y < Math.min(y1 + 2, grid.getHeight()); y++)
 						Optional.ofNullable(grid.getTiles()[x][y].getAgentPresent())
