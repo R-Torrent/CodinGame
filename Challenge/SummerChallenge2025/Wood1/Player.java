@@ -66,7 +66,7 @@ class Player {
 								? "gl hf"
 								: "brain dead"));
 						commands.add(Command.HUNKER_DOWN.formCommand(null, null, ""));
-						return commands.toString(); })
+						return commands.toString();})
 					.forEach(System.out::println);
 			if (++gameTurn > limitGameTurns)
 				break;
@@ -83,10 +83,9 @@ class Player {
 			Tile tile = grid.getTiles()[in.nextInt()][in.nextInt()]; // [x, y]
 			agents[agentId - 1].setAgent(
 					tile,
-					in.nextInt(), // Number of turns before this agent can shoot
-					in.nextInt(), // splashBombs remaining
-					in.nextInt()  // Damage (0-100) this agent has taken
-			);
+					in.nextInt(),   // Number of turns before this agent can shoot
+					in.nextInt(),   // splashBombs remaining
+					in.nextInt());  // Damage (0-100) this agent has taken
 			tile.setAgentPresent(agents[agentId - 1]);
 		}
 		for (int i = 0; i < agents.length; i++)
@@ -116,10 +115,9 @@ class Player {
 		for (int y = 0; y < height; y++)
 			for (int x = 0; x < width; x++)
 				grid.initTile(
-						in.nextInt(), // X coordinates, 0 is left edge
-						in.nextInt(), // Y coordinates, 0 is top edge
-						in.nextInt()  // 0: empty, 1: low cover, 2: high cover
-				);
+						in.nextInt(),  // X coordinates, 0 is left edge
+						in.nextInt(),  // Y coordinates, 0 is top edge
+						in.nextInt()); // 0: empty, 1: low cover, 2: high cover
 		grid.determineCoverArea();
 		grid.determinePathing();
 		gameTurn = 1;
@@ -137,6 +135,8 @@ class Player {
 class Brain {
 
 	private final Player player;
+
+	private static final double cutOffCurve = 16.0;
 
 	Brain(Player player) {
 		this.player = player;
@@ -169,18 +169,16 @@ class Brain {
 								final int d = grid.getDistances(a.getTile(), t);
 								if (d < Integer.MAX_VALUE)
 									splashBombLocationAppraisal.merge(t,
-											e.getValue().getTotalFoeWater() / Math.pow(d, 1.5),
+											e.getValue().getTotalFoeWater() * cutOffCurve / (cutOffCurve + d * d),
 											Double::sum);
 							}
-						}
-					});
+						}});
 			a.setIntendedMove(splashBombLocationAppraisal.entrySet().stream()
 					.max(Map.Entry.comparingByValue())
 					.map(Map.Entry::getKey)
 					.map(destination -> grid.getPath(a.getTile(), destination))
-					.filter(Predicate.not(List::isEmpty))
-					.map(List::getFirst)
-					.orElse(null));
+					.filter(l -> l.size() > 1)
+					.map(l -> l.get(1)));
 		}
 
 		for (Agent a : myAgents)
@@ -190,7 +188,7 @@ class Brain {
 	public List<String> issueCommands() {
 		return Arrays.stream(player.getAgents())
 				.filter(Objects::nonNull)
-				.map(a -> a.buildCommands(player))
+				.map(Agent::buildCommands)
 				.filter(Objects::nonNull)
 				.toList();
 	}
@@ -223,8 +221,8 @@ enum Command {
 		} },
 	MESSAGE ("MESSAGE ") {
 		@Override
-		StringJoiner construct(StringJoiner sj, Agent agent, Tile tile, String text) {
-			return sj.add(text);
+		StringJoiner construct(StringJoiner sj, Agent agent, Tile tile, String message) {
+			return sj.add(message);
 		} };
 
 	private final String command;
@@ -251,8 +249,9 @@ class Agent {
 	private int splashBombs;
 	private int wetness;
 
-	private Tile intendedMove;
-	private Tile intendedSplashBombTile;
+	private Optional<Tile> intendedMove;
+	private Optional<Tile> intendedSplashBomb;
+	private Optional<String> intendedMessage;
 	private String moveAction;
 	private String combatAction;
 	private String messageAction;
@@ -283,8 +282,9 @@ class Agent {
 		this.splashBombs = splashBombs;
 		this.wetness = wetness;
 
-		intendedMove = null;
-		intendedSplashBombTile = null;
+		intendedMove = Optional.empty();
+		intendedSplashBomb = Optional.empty();
+		intendedMessage = Optional.empty();
 		moveAction = null;
 		combatAction = null;
 		messageAction = null;
@@ -296,13 +296,13 @@ class Agent {
 
 	public int getWetness() { return wetness; }
 
-	public void setIntendedMove(Tile intendedMove) { this.intendedMove = intendedMove; }
+	public void setIntendedMove(Optional<Tile> intendedMove) { this.intendedMove = intendedMove; }
 
-	public void setMoveAction(String moveAction) { this.moveAction = moveAction; }
+	public void setIntendedSplashBomb(Optional<Tile> intendedSplashBomb) {
+		this.intendedSplashBomb = intendedSplashBomb;
+	}
 
-	public void setCombatAction(String combatAction) { this.combatAction = combatAction; }
-
-	public void setMessageAction(String messageAction) { this.messageAction = messageAction; }
+	public void setIntendedMessage(Optional<String> intendedMessage) { this.intendedMessage = intendedMessage; }
 
 	public boolean isMyPlayer() { return myPlayer; }
 
@@ -343,17 +343,17 @@ class Agent {
 	}
 
 	public void setCommands(Player player) {
-		if (intendedMove != null)
-			moveAction = Command.MOVE.formCommand(null, intendedMove, null);
-		if (intendedSplashBombTile != null)
-			combatAction = Command.THROW.formCommand(null, intendedSplashBombTile, null);
-		else
-			combatAction = Command.HUNKER_DOWN.formCommand(null, null, "");
+		intendedMove.ifPresent(t -> moveAction = Command.MOVE.formCommand(null, t, null));
+		intendedSplashBomb.ifPresentOrElse(
+				t -> combatAction = Command.THROW.formCommand(null, t, null),
+				() -> combatAction = Command.HUNKER_DOWN.formCommand(null, null, ""));
 		if (player.getGameTurn() == 1)
 			messageAction = Command.MESSAGE.formCommand(null, null, "gl hf");
+		else
+			intendedMessage.ifPresent(s -> messageAction = Command.MESSAGE.formCommand(null, null, s));
 	}
 
-	public String buildCommands(Player player) {
+	public String buildCommands() {
 		if (!myPlayer)
 			return null;
 
@@ -539,20 +539,17 @@ class Tile {
 			@Override
 			public Type maxCover(Type comparedWith) {
 				return comparedWith;
-			}
-		},
+			} },
 		LOW_COVER {
 			@Override
 			public Type maxCover(Type comparedWith) {
 				return comparedWith == HIGH_COVER ? comparedWith : this;
-			}
-		},
+			} },
 		HIGH_COVER {
 			@Override
 			public Type maxCover(Type comparedWith) {
 				return this;
-			}
-		};
+			} };
 
 		public abstract Type maxCover(Type comparedWith);
 
@@ -594,7 +591,7 @@ class Tile {
 		neighbors[n.index] = t;
 	}
 
-	public void setAgentPresent(Agent agentPresent) { this.agentPresent = agentPresent;	}
+	public void setAgentPresent(Agent agentPresent) { this.agentPresent = agentPresent; }
 
 	int getDamage(int[][] damageArea) {
 		return damageArea[coordinates.x()][coordinates.y()];
@@ -653,7 +650,7 @@ class SplashBomb {
 				for (int x = Math.max(x1 - 1, 0); x <= Math.min(x1 + 1, grid.getWidth() - 1); x++)
 					for (int y = Math.max(y1 - 1, 0); y <= Math.min(y1 + 1, grid.getHeight() - 1); y++)
 						Optional.ofNullable(grid.getTiles()[x][y].getAgentPresent())
-								.ifPresent(a ->  {
+								.ifPresent(a -> {
 									if (a.isMyPlayer())
 										bomb.totalFriendlyWater += bombWetness;
 									else
