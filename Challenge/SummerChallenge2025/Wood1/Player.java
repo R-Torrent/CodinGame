@@ -135,11 +135,13 @@ class Player {
 class Brain {
 
 	private final Player player;
+	private final Map<Integer, Map<Tile, Double>> splashBombLocationAppraisal;
 
 	private static final double cutOffCurve = 16.0;
 
 	Brain(Player player) {
 		this.player = player;
+		splashBombLocationAppraisal = new HashMap<>(player.getAgents().length);
 	}
 
 	public void think(Grid grid) {
@@ -153,36 +155,38 @@ class Brain {
 				.toList();
 
 		SplashBomb.determineAllSplashBombs(grid);
-
-		for (Agent a : myAgents) {
-			final Map<Tile, Double> splashBombLocationAppraisal = new HashMap<>(grid.getTotalTiles());
-
-			SplashBomb.gridBombing.entrySet().stream()
-					.filter(e -> e.getValue().getTotalFriendlyWater() == 0)
-					.forEach(e -> {
-						final int x1 = e.getKey().getCoordinates().x(), y1 = e.getKey().getCoordinates().y();
-						for (int x = Math.max(x1 - 4, 0); x <= Math.min(x1 + 4, grid.getWidth() - 1); x++) {
-							final int ySpan = Math.max(4 - Math.abs(x - x1), 0);
-							for (int y = Math.max(y1 - ySpan, 0);
-									y <= Math.min(y1 + ySpan, grid.getHeight() - 1); y++) {
-								final Tile t = grid.getTiles()[x][y];
+		for (Agent a : myAgents)
+			splashBombLocationAppraisal.put(a.getAgentId() - 1, new HashMap<>(grid.getTotalTiles()));
+		SplashBomb.gridBombing.entrySet().stream()
+				.filter(e -> e.getValue().getTotalFriendlyWater() == 0)
+				.forEach(e -> {
+					final int x1 = e.getKey().getCoordinates().x(), y1 = e.getKey().getCoordinates().y();
+					for (int x = Math.max(x1 - 4, 0); x <= Math.min(x1 + 4, grid.getWidth() - 1); x++) {
+						final int ySpan = Math.max(4 - Math.abs(x - x1), 0);
+						for (int y = Math.max(y1 - ySpan, 0); y <= Math.min(y1 + ySpan, grid.getHeight() - 1); y++) {
+							final Tile t = grid.getTiles()[x][y];
+							for (Agent a : myAgents) {
 								final int d = grid.getDistances(a.getTile(), t);
 								if (d < Integer.MAX_VALUE)
-									splashBombLocationAppraisal.merge(t,
+									splashBombLocationAppraisal.get(a.getAgentId() - 1).merge(t,
 											e.getValue().getTotalFoeWater() * cutOffCurve / (cutOffCurve + d * d),
 											Double::sum);
 							}
-						}});
-			a.setIntendedMove(splashBombLocationAppraisal.entrySet().stream()
+						}
+					}
+				});
+		for (Agent a : myAgents)
+			a.setIntendedMove(splashBombLocationAppraisal.get(a.getAgentId() - 1).entrySet().stream()
 					.max(Map.Entry.comparingByValue())
 					.map(Map.Entry::getKey)
 					.map(destination -> grid.getPath(a.getTile(), destination))
 					.filter(l -> l.size() > 1)
 					.map(l -> l.get(1)));
-		}
+
+		grid.resetAgentsPresent(myAgents, otherAgents);
 
 		for (Agent a : myAgents)
-			 a.setCommands(player);
+			a.setCommands(player);
 	}
 
 	public List<String> issueCommands() {
@@ -296,6 +300,8 @@ class Agent {
 
 	public int getWetness() { return wetness; }
 
+	public Optional<Tile> getIntendedMove() { return intendedMove; }
+
 	public void setIntendedMove(Optional<Tile> intendedMove) { this.intendedMove = intendedMove; }
 
 	public void setIntendedSplashBomb(Optional<Tile> intendedSplashBomb) {
@@ -398,6 +404,16 @@ class Grid {
 		for (int x = 0; x < width; x++)
 			for (int y = 0; y < height; y++)
 				tiles[x][y].setAgentPresent(null);
+	}
+
+	public void resetAgentsPresent(List<Agent> myAgents, List<Agent> otherAgents) {
+		resetAgentsPresent();
+		for (Agent ma : myAgents)
+			ma.getIntendedMove().ifPresentOrElse(
+					t -> t.setAgentPresent(ma),
+					() -> ma.getTile().setAgentPresent(ma));
+		for (Agent oa : otherAgents)
+			oa.getTile().setAgentPresent(oa);
 	}
 
 	public int getWidth() {	return width; }
