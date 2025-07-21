@@ -176,14 +176,30 @@ class Brain {
 					}
 				});
 		for (Agent a : myAgents)
-			a.setIntendedMove(splashBombLocationAppraisal.get(a.getAgentId() - 1).entrySet().stream()
+			a.setPath(splashBombLocationAppraisal.get(a.getAgentId() - 1).entrySet().stream()
 					.max(Map.Entry.comparingByValue())
 					.map(Map.Entry::getKey)
-					.map(destination -> grid.getPath(a.getTile(), destination))
-					.filter(l -> l.size() > 1)
-					.map(l -> l.get(1)));
+					.map(destination -> grid.getPath(a.getTile(), destination)));
 
 		grid.resetAgentsPresent(myAgents, otherAgents);
+		SplashBomb.determineAllSplashBombs(grid);
+		for (Agent a : myAgents) {
+			if (a.getSplashBombs() == 0 || a.getIntendedPath().filter(l -> l.size() == 1).isEmpty())
+				continue;
+			Map<Tile, Integer> splashBombTotalDamage = new HashMap<>(25);
+			final int x1 = a.getTile().getCoordinates().x(), y1 = a.getTile().getCoordinates().y();
+			for (int x = Math.max(x1 - 4, 0); x <= Math.min(x1 + 4, grid.getWidth() - 1); x++) {
+				final int ySpan = Math.max(4 - Math.abs(x - x1), 0);
+				for (int y = Math.max(y1 - ySpan, 0); y <= Math.min(y1 + ySpan, grid.getHeight() - 1); y++) {
+					final Tile t = grid.getTiles()[x][y];
+					if (SplashBomb.gridBombing.get(t).getTotalFriendlyWater() == 0)
+						splashBombTotalDamage.put(t, SplashBomb.gridBombing.get(t).getTotalFoeWater());
+				}
+			}
+			a.setIntendedSplashBomb(splashBombTotalDamage.entrySet().stream()
+					.max(Map.Entry.comparingByValue())
+					.map(Map.Entry::getKey));
+		}
 
 		for (Agent a : myAgents)
 			a.setCommands(player);
@@ -253,6 +269,7 @@ class Agent {
 	private int splashBombs;
 	private int wetness;
 
+	private Optional<List<Tile>> intendedPath;
 	private Optional<Tile> intendedMove;
 	private Optional<Tile> intendedSplashBomb;
 	private Optional<String> intendedMessage;
@@ -286,6 +303,7 @@ class Agent {
 		this.splashBombs = splashBombs;
 		this.wetness = wetness;
 
+		intendedPath = Optional.empty();
 		intendedMove = Optional.empty();
 		intendedSplashBomb = Optional.empty();
 		intendedMessage = Optional.empty();
@@ -298,11 +316,20 @@ class Agent {
 
 	public Tile getTile() { return tile; }
 
+	public int getSplashBombs() { return splashBombs; }
+
 	public int getWetness() { return wetness; }
+
+	public Optional<List<Tile>> getIntendedPath() { return intendedPath; }
 
 	public Optional<Tile> getIntendedMove() { return intendedMove; }
 
-	public void setIntendedMove(Optional<Tile> intendedMove) { this.intendedMove = intendedMove; }
+	public void setPath(Optional<List<Tile>> intendedPath) {
+		this.intendedPath = intendedPath;
+		intendedMove = intendedPath
+				.filter(l -> l.size() > 1)
+				.map(l -> l.get(1));
+	}
 
 	public void setIntendedSplashBomb(Optional<Tile> intendedSplashBomb) {
 		this.intendedSplashBomb = intendedSplashBomb;
