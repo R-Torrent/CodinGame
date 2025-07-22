@@ -40,12 +40,41 @@ class Player {
 		}
 	}
 
+	private Player() {
+		in = new Scanner(System.in);
+		myId = in.nextInt(); // Your player id (0 or 1)
+		final int agentDataCount = in.nextInt(); // Total number of agents in the game
+		agents = new Agent[agentDataCount];
+		for (int i = 0; i < agentDataCount; i++) {
+			final int agentId = in.nextInt(); // Unique identifier for this agent
+			agents[agentId - 1] = new Agent(myId, agentId,
+					in.nextInt(),  // Player id of this agent
+					in.nextInt(),  // Number of turns between each of this agent's shots
+					in.nextInt(),  // Maximum manhattan distance for greatest damage output
+					in.nextInt(),  // Damage output within optimal conditions
+					in.nextInt()); // Number of splash bombs this agent can throw this game
+		}
+		int width = in.nextInt();  // Width of the game map
+		int height = in.nextInt(); // Height of the game map
+		grid = new Grid(width, height);
+		for (int y = 0; y < height; y++)
+			for (int x = 0; x < width; x++)
+				grid.initTile(
+						in.nextInt(),  // X coordinates, 0 is left edge
+						in.nextInt(),  // Y coordinates, 0 is top edge
+						in.nextInt()); // 0: empty, 1: low cover, 2: high cover
+		grid.determineCoverArea();
+		grid.determinePathing();
+		gameTurn = 1;
+		overmind = new Brain(this, grid);
+	}
+
 	private void runGame() {
 		// game loop
 		while (gameTurn <= limitGameTurns) {
 			grid.resetAgentsPresent();
 			loadTurn();
-			overmind.think(grid);
+			overmind.think();
 
 			// Write an action using System.out.println()
 			// To debug: System.err.println("Debug messages...");
@@ -106,35 +135,6 @@ class Player {
 				.toList();
 	}
 
-	Player() {
-		in = new Scanner(System.in);
-		myId = in.nextInt(); // Your player id (0 or 1)
-		final int agentDataCount = in.nextInt(); // Total number of agents in the game
-		agents = new Agent[agentDataCount];
-		for (int i = 0; i < agentDataCount; i++) {
-			final int agentId = in.nextInt(); // Unique identifier for this agent
-			agents[agentId - 1] = new Agent(myId, agentId,
-					in.nextInt(),  // Player id of this agent
-					in.nextInt(),  // Number of turns between each of this agent's shots
-					in.nextInt(),  // Maximum manhattan distance for greatest damage output
-					in.nextInt(),  // Damage output within optimal conditions
-					in.nextInt()); // Number of splash bombs this agent can throw this game
-		}
-		int width = in.nextInt();  // Width of the game map
-		int height = in.nextInt(); // Height of the game map
-		grid = new Grid(width, height);
-		for (int y = 0; y < height; y++)
-			for (int x = 0; x < width; x++)
-				grid.initTile(
-						in.nextInt(),  // X coordinates, 0 is left edge
-						in.nextInt(),  // Y coordinates, 0 is top edge
-						in.nextInt()); // 0: empty, 1: low cover, 2: high cover
-		grid.determineCoverArea();
-		grid.determinePathing();
-		gameTurn = 1;
-		overmind = new Brain(this);
-	}
-
 	public Agent[] getAgents() { return agents; }
 
 	public List<Agent> getMyAgents() { return myAgents; }
@@ -148,16 +148,18 @@ class Player {
 class Brain {
 
 	private final Player player;
+	private final Grid grid;
 	private final Map<Integer, Map<Tile, Double>> splashBombLocationAppraisal;
 
 	private static final double cutOffCurve = 16.0;
 
-	Brain(final Player player) {
+	public Brain(final Player player, final Grid grid) {
 		this.player = player;
+		this.grid = grid;
 		splashBombLocationAppraisal = new HashMap<>(player.getAgents().length);
 	}
 
-	public void think(final Grid grid) {
+	public void think() {
 		SplashBomb.determineAllSplashBombs(grid);
 		for (Agent a : player.getMyAgents())
 			splashBombLocationAppraisal.put(a.getAgentId() - 1, new HashMap<>(grid.getTotalTiles()));
