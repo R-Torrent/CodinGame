@@ -372,18 +372,18 @@ class Brain {
 		return 0.0;
 	}
 
-	private Tile moveFrom(final Vector2D totalForce, final Coordinates ca) {
+	private Tile moveFrom(final Vector2D totalForce, final Coordinates from) {
 		final double absX = Math.abs(totalForce.x()), absY = Math.abs(totalForce.y());
 		Tile destination = null, t;
 
-		if (absX >= absY && (totalForce.x() >= minForce
-				&& (t = grid.getTiles()[ca.x() + 1][ca.y()]).getType() == Tile.Type.EMPTY)
-				|| absX >= absY && (totalForce.x() <= -minForce
-				&& (t = grid.getTiles()[ca.x() - 1][ca.y()]).getType() == Tile.Type.EMPTY)
-				|| (totalForce.y() >= minForce
-				&& (t = grid.getTiles()[ca.x()][ca.y() + 1]).getType() == Tile.Type.EMPTY)
-				|| (totalForce.y() <= minForce
-				&& (t = grid.getTiles()[ca.x()][ca.y() - 1]).getType() == Tile.Type.EMPTY))
+		if (absX >= absY && (totalForce.x() >= minForce && from.x() < grid.getWidth() - 1
+				&& (t = grid.getTiles()[from.x() + 1][from.y()]).getType() == Tile.Type.EMPTY)
+				|| absX >= absY && (totalForce.x() <= -minForce && from.x() > 1
+				&& (t = grid.getTiles()[from.x() - 1][from.y()]).getType() == Tile.Type.EMPTY)
+				|| (totalForce.y() >= minForce && from.y() < grid.getHeight() - 1
+				&& (t = grid.getTiles()[from.x()][from.y() + 1]).getType() == Tile.Type.EMPTY)
+				|| (totalForce.y() <= minForce && from.y() > 1
+				&& (t = grid.getTiles()[from.x()][from.y() - 1]).getType() == Tile.Type.EMPTY))
 			destination = t;
 
 		return destination;
@@ -633,7 +633,8 @@ class Agent {
 				"\n  totalForces=" + totalForces + (intendedPath.isEmpty() ? "" :
 				"\n  intendedPath=" + intendedPath.get()) + (intendedMove. isEmpty() ? "" :
 				"\n  intendedMove=" + intendedMove.get()) + (intendedShootingTarget.isEmpty() ? "" :
-				"\n  intendedShootingTarget=" + intendedShootingTarget.get()) + (intendedSplashBomb.isEmpty() ? "" :
+				"\n  intendedShootingTarget=" + intendedShootingTarget.get().agentId)
+						+ (intendedSplashBomb.isEmpty() ? "" :
 				"\n  intendedSplashBomb=" + intendedSplashBomb.get()) + (intendedMessage.isEmpty() ? "" :
 				"\n  intendedMessage=" + intendedMessage.get());
 	}
