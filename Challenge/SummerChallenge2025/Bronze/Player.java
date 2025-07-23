@@ -168,6 +168,14 @@ class Brain {
 	// Minimum force that can induce a movement
 	private static final double minForce = 20.0;
 
+	final private static String[] messages = new String[] {
+			"For 42 Barcelona!",
+			"All enemies of rtorrent will die!",
+			"Once more unto the breach, dear friends",
+			"You rebel scum!",
+			"How do you like them apples?" };
+	private static boolean[] messagesDisplayed = new boolean[messages.length];
+
 	public Brain(final Player player, final Grid grid) {
 		this.player = player;
 		this.grid = grid;
@@ -307,15 +315,22 @@ class Brain {
 					.max(Map.Entry.comparingByValue());
 
 			intendedShootingTarget.ifPresent(e -> {
-				if (intendedSplashBomb.isEmpty() || intendedSplashBomb.get().getValue() <= e.getValue())
+				if (intendedSplashBomb.isEmpty() || intendedSplashBomb.get().getValue() <= e.getValue()) {
 					a.setIntendedShootingTarget(Optional.of(e.getKey()));
+					switch ((a.getAgentId() + player.getGameTurn()) % 40) {
+						case 10: displayMessage(a, 0); break;
+						case 20: displayMessage(a, 1); break;
+						case 30: displayMessage(a, 2); break;
+						default:
+					}
+				}
 			});
 			intendedSplashBomb.ifPresent(e -> {
 				if (intendedShootingTarget.isEmpty() || intendedShootingTarget.get().getValue() < e.getValue()) {
 					a.setIntendedSplashBomb(Optional.of(e.getKey()));
-					switch ((a.getAgentId() + player.getGameTurn()) % 7) {
-						case 0: a.setIntendedMessage(Optional.of("For 42 Barcelona!")); break;
-						case 1: a.setIntendedMessage(Optional.of("All enemies of rtorrent will die!")); break;
+					switch ((a.getAgentId() + player.getGameTurn()) % 20) {
+						case  7: displayMessage(a, 3); break;
+						case 17: displayMessage(a, 4); break;
 						default:
 					}
 				}
@@ -372,6 +387,15 @@ class Brain {
 			destination = t;
 
 		return destination;
+	}
+
+	private void displayMessage(final Agent a, final int n) {
+		if (0 > n || n >= messagesDisplayed.length)
+			throw new RuntimeException("Trying to display an erroneous message");
+		if (!messagesDisplayed[n]) {
+			a.setIntendedMessage(Optional.of(messages[n]));
+			messagesDisplayed[n] = true;
+		}
 	}
 
 	public List<String> issueCommands() {
