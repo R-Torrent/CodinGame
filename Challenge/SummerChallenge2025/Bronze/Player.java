@@ -416,7 +416,7 @@ enum Command {
 	MOVE ("MOVE ") {
 		@Override
 		StringJoiner construct(final StringJoiner sj, final Agent agent, final Tile moveTo, final String string) {
-			return sj.add(moveTo.getCoordinates().toString());
+			return sj.add(moveTo.toString());
 		} },
 	SHOOT ("SHOOT ") {
 		@Override
@@ -426,7 +426,7 @@ enum Command {
 	THROW ("THROW ") {
 		@Override
 		StringJoiner construct(final StringJoiner sj, final Agent agent, final Tile throwAt, final String string) {
-			return sj.add(throwAt.getCoordinates().toString());
+			return sj.add(throwAt.toString());
 		} },
 	HUNKER_DOWN ("HUNKER_DOWN") {
 		@Override
@@ -626,16 +626,16 @@ class Agent {
 				"\n  splashBombs=" + splashBombs +
 				"\n  wetness=" + wetness +
 				"\n  forcesActingOn=" +
-				"\n    " + Force.DANGER_GRADIENT     + ": " + forcesActingOn[Force.DANGER_GRADIENT.type] +
-				"\n    " + Force.INTERACTION_FRIENDS + ": " + forcesActingOn[Force.INTERACTION_FRIENDS.type] +
-				"\n    " + Force.INTERACTION_FOES    + ": " + forcesActingOn[Force.INTERACTION_FOES.type] +
-				"\n    " + Force.SPLASH_BOMB_APPEAL  + ": " + forcesActingOn[Force.SPLASH_BOMB_APPEAL.type] +
+				"\n    " + Force.DANGER_GRADIENT     + ":" + forcesActingOn[Force.DANGER_GRADIENT.type] +
+				"\n    " + Force.INTERACTION_FRIENDS + ":" + forcesActingOn[Force.INTERACTION_FRIENDS.type] +
+				"\n    " + Force.INTERACTION_FOES    + ":" + forcesActingOn[Force.INTERACTION_FOES.type] +
+				"\n    " + Force.SPLASH_BOMB_APPEAL  + ":" + forcesActingOn[Force.SPLASH_BOMB_APPEAL.type] +
 				"\n  totalForces=" + totalForces + (intendedPath.isEmpty() ? "" :
-				"\n, intendedPath=" + intendedPath) + (intendedMove. isEmpty() ? "" :
-				"\n, intendedMove=" + intendedMove) + (intendedShootingTarget.isEmpty() ? "" :
-				"\n, intendedShootingTarget=" + intendedShootingTarget) + (intendedSplashBomb.isEmpty() ? "" :
-				"\n, intendedSplashBomb=" + intendedSplashBomb) + (intendedMessage.isEmpty() ? "" :
-				"\n, intendedMessage=" + intendedMessage);
+				"\n  intendedPath=" + intendedPath.get()) + (intendedMove. isEmpty() ? "" :
+				"\n  intendedMove=" + intendedMove.get()) + (intendedShootingTarget.isEmpty() ? "" :
+				"\n  intendedShootingTarget=" + intendedShootingTarget.get()) + (intendedSplashBomb.isEmpty() ? "" :
+				"\n  intendedSplashBomb=" + intendedSplashBomb.get()) + (intendedMessage.isEmpty() ? "" :
+				"\n  intendedMessage=" + intendedMessage.get());
 	}
 
 	@Override
@@ -888,6 +888,11 @@ class Tile {
 	public void setAgentPresent(final Agent agentPresent) { this.agentPresent = agentPresent; }
 
 	@Override
+	public String toString() {
+		return coordinates.toString();
+	}
+
+	@Override
 	public boolean equals(final Object o) {
 		if (o == null || getClass() != o.getClass()) return false;
 		Tile tile = (Tile) o;
@@ -930,7 +935,7 @@ record Vector2D(double x, double y) {
 
 	@Override
 	public String toString() {
-		return String.format("(%1$ 10.3f, %2$ 10.3f)", x, y);
+		return String.format("(%1$ 8.3f, %2$ 8.3f)", x, y);
 	}
 
 	public static Vector2D plus(final Vector2D v1, final Vector2D v2) {
