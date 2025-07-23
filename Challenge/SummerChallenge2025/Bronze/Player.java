@@ -43,8 +43,8 @@ class Player {
 
 	private Player() {
 		in = new Scanner(System.in);
-        final int myId = in.nextInt(); // Your player id (0 or 1)
-        final int agentDataCount = in.nextInt(); // Total number of agents in the game
+		final int myId = in.nextInt(); // Your player id (0 or 1)
+		final int agentDataCount = in.nextInt(); // Total number of agents in the game
 		agents = new Agent[agentDataCount];
 		for (int i = 0; i < agentDataCount; i++) {
 			final int agentId = in.nextInt(); // Unique identifier for this agent
@@ -311,8 +311,14 @@ class Brain {
 					a.setIntendedShootingTarget(Optional.of(e.getKey()));
 			});
 			intendedSplashBomb.ifPresent(e -> {
-				if (intendedShootingTarget.isEmpty() || intendedShootingTarget.get().getValue() < e.getValue())
+				if (intendedShootingTarget.isEmpty() || intendedShootingTarget.get().getValue() < e.getValue()) {
 					a.setIntendedSplashBomb(Optional.of(e.getKey()));
+					switch ((a.getAgentId() + player.getGameTurn()) % 7) {
+						case 0: a.setIntendedMessage(Optional.of("For 42 Barcelona!")); break;
+						case 1: a.setIntendedMessage(Optional.of("All enemies of rtorrent will die!")); break;
+						default:
+					}
+				}
 			});
 		}
 	}
@@ -600,11 +606,12 @@ class Agent {
 				"\n    " + Force.INTERACTION_FRIENDS + ": " + forcesActingOn[Force.INTERACTION_FRIENDS.type] +
 				"\n    " + Force.INTERACTION_FOES    + ": " + forcesActingOn[Force.INTERACTION_FOES.type] +
 				"\n    " + Force.SPLASH_BOMB_APPEAL  + ": " + forcesActingOn[Force.SPLASH_BOMB_APPEAL.type] +
-				"\n  totalForces=" + totalForces +
-				"\n, intendedPath=" + intendedPath +
-				"\n, intendedMove=" + intendedMove +
-				"\n, intendedSplashBomb=" + intendedSplashBomb +
-				"\n, intendedMessage=" + intendedMessage;
+				"\n  totalForces=" + totalForces + (intendedPath.isEmpty() ? "" :
+				"\n, intendedPath=" + intendedPath) + (intendedMove. isEmpty() ? "" :
+				"\n, intendedMove=" + intendedMove) + (intendedShootingTarget.isEmpty() ? "" :
+				"\n, intendedShootingTarget=" + intendedShootingTarget) + (intendedSplashBomb.isEmpty() ? "" :
+				"\n, intendedSplashBomb=" + intendedSplashBomb) + (intendedMessage.isEmpty() ? "" :
+				"\n, intendedMessage=" + intendedMessage);
 	}
 
 	@Override
@@ -855,10 +862,6 @@ class Tile {
 	}
 
 	public void setAgentPresent(final Agent agentPresent) { this.agentPresent = agentPresent; }
-
-	int getDamage(final int[][] damageArea) {
-		return damageArea[coordinates.x()][coordinates.y()];
-	}
 
 	@Override
 	public boolean equals(final Object o) {
