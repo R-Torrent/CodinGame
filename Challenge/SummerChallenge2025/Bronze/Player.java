@@ -16,15 +16,15 @@ import java.util.function.Predicate;
 class Player {
 
 	private final Scanner in;
-	private final int myId;
 	private final Agent[] agents;
 	private List<Agent> myAgents;
 	private List<Agent> otherAgents;
 	private final Grid grid;
-	private int gameTurn;
 	private final Brain overmind;
+	private int gameTurn;
 
-	private static final int limitGameTurns = 40;
+	private static final int limitGameTurns = 100;
+	private static final boolean debug = true; // Debug messages on
 
 	public static void main(String[] args) {
 		Player player = new Player();
@@ -32,7 +32,8 @@ class Player {
 			player.runGame();
 		} catch (Exception e) {
 			e.printStackTrace(System.err);
-			System.err.println("OOPS! Brain is dead");
+			if (debug)
+				System.err.println("OOPS! Brain is dead");
 			player.deadBrain();
 		}
 		finally {
@@ -42,8 +43,8 @@ class Player {
 
 	private Player() {
 		in = new Scanner(System.in);
-		myId = in.nextInt(); // Your player id (0 or 1)
-		final int agentDataCount = in.nextInt(); // Total number of agents in the game
+        final int myId = in.nextInt(); // Your player id (0 or 1)
+        final int agentDataCount = in.nextInt(); // Total number of agents in the game
 		agents = new Agent[agentDataCount];
 		for (int i = 0; i < agentDataCount; i++) {
 			final int agentId = in.nextInt(); // Unique identifier for this agent
@@ -65,8 +66,8 @@ class Player {
 						in.nextInt()); // 0: empty, 1: low cover, 2: high cover
 		grid.determineCoverArea();
 		grid.determinePathing();
-		gameTurn = 1;
 		overmind = new Brain(this, grid);
+		gameTurn = 1;
 	}
 
 	private void runGame() {
@@ -75,6 +76,8 @@ class Player {
 			grid.resetAgentsPresent();
 			loadTurn();
 			overmind.think();
+			if (debug)
+				myAgents.forEach(System.err::println);
 
 			// Write an action using System.out.println()
 			// To debug: System.err.println("Debug messages...");
@@ -122,12 +125,11 @@ class Player {
 		for (int i = 0; i < agents.length; i++)
 			if (!stillAlive[i])
 				agents[i] = null;
-		final int myAgentCount = in.nextInt(); // Number of alive agents controlled by you
 		myAgents = Arrays.stream(agents)
 				.filter(Objects::nonNull)
 				.filter(Agent::isMyPlayer)
 				.toList();
-		if (myAgents.size() != myAgentCount)
+		if (myAgents.size() != in.nextInt()) // Number of alive agents controlled by you
 			throw new RuntimeException("Something is wrong with my agent count");
 		otherAgents = Arrays.stream(agents)
 				.filter(Objects::nonNull)
@@ -149,9 +151,22 @@ class Brain {
 
 	private final Player player;
 	private final Grid grid;
-	private final Map<Integer, Map<Tile, Double>> splashBombLocationAppraisal;
+	private final Map<Integer, Map<Tile, Integer>> splashBombLocationAppraisal;
 
-	private static final double cutOffCurve = 16.0;
+	// Aversion to danger (AKA constant of proportionality with the gradient of the totalFoeShootingPotential)
+	private static final double k0 = 10.0;
+	// Constant of attraction to foes, per difference in wetness
+	private static final double k1 = 10.0;
+	// Skew to the wetness difference
+	private static final double skew = 20.0;
+	// Inverse Power by which attraction to foes falls
+	private static final double invFoes = 1.0;
+	// Constant of repulsion between friends
+	private static final double k2 = 100.0;
+	// Inverse Power by which repulsion between friends falls
+	private static final double invFriends = 2.0;
+	// Minimum force that can induce a movement
+	private static final double minForce = 20.0;
 
 	public Brain(final Player player, final Grid grid) {
 		this.player = player;
@@ -160,9 +175,24 @@ class Brain {
 	}
 
 	public void think() {
-		SplashBomb.determineAllSplashBombs(grid);
+		// Enemy shooting potential
+		final int[][] totalFoeShootingPotential = new int[grid.getWidth()][grid.getHeight()];
+		for (Agent foe : player.getOtherAgents()) {
+			final int[][] shootDamageArea = foe.calculateShootDamagePotential(grid, foe.getLocation());
+			for (int x = 0; x < grid.getWidth(); x++)
+				for (int y = 0; y < grid.getHeight(); y++) {
+					int shootDamage = shootDamageArea[x][y];
+					if (foe.getShootCooldown() != 0 && foe.getCooldown() != 0)
+						shootDamage = shootDamage
+								* (foe.getShootCooldown() - foe.getCooldown()) / foe.getShootCooldown();
+					totalFoeShootingPotential[x][y] += shootDamage;
+				}
+		}
+
+		// SplashBomb evaluations
 		for (Agent a : player.getMyAgents())
 			splashBombLocationAppraisal.put(a.getAgentId() - 1, new HashMap<>(grid.getTotalTiles()));
+		SplashBomb.determineAllSplashBombs(grid);
 		SplashBomb.gridBombing.entrySet().stream()
 				.filter(e -> e.getValue().getTotalFriendlyWater() == 0)
 				.forEach(e -> {
@@ -171,49 +201,177 @@ class Brain {
 						final int ySpan = Math.max(4 - Math.abs(x - x1), 0);
 						for (int y = Math.max(y1 - ySpan, 0); y <= Math.min(y1 + ySpan, grid.getHeight() - 1); y++) {
 							final Tile t = grid.getTiles()[x][y];
-							for (Agent a : player.getMyAgents()) {
-								final int d = grid.getDistances(a.getLocation(), t);
-								if (d < Integer.MAX_VALUE)
+							for (Agent a : player.getMyAgents())
+								if (a.getSplashBombs() > 0 && grid.getDistances(a.getLocation(), t) == 1)
 									splashBombLocationAppraisal.get(a.getAgentId() - 1).merge(t,
-											e.getValue().getTotalFoeWater() * cutOffCurve / (cutOffCurve + d * d),
-											Double::sum);
-							}
+											e.getValue().getTotalFoeWater(),
+											Integer::sum);
 						}
 					}
 				});
-		for (Agent a : player.getMyAgents())
-			a.setPath(splashBombLocationAppraisal.get(a.getAgentId() - 1).entrySet().stream()
-					.max(Map.Entry.comparingByValue())
-					.map(Map.Entry::getKey)
-					.map(destination -> grid.getPath(a.getLocation(), destination)));
+
+		// Acting forces
+		for (Agent a : player.getMyAgents()) {
+			final Coordinates location = a.getLocation().getCoordinates();
+			final Vector2D xa = a.getVector();
+
+			// Gradient to the totalFoeShootingPotential
+			// Arrays of the three values centered around the agent's location [0]:{i-1} [1]:{i} [2]:{i+1}
+			// -1: Indicates absence of a value (== border or obstacle)
+			final int[] valuesX = extractValues(0, totalFoeShootingPotential, a.getLocation().getCoordinates());
+			final int[] valuesY = extractValues(1, totalFoeShootingPotential, a.getLocation().getCoordinates());
+
+			final Vector2D gradient = Vector2D.multiplyByConst(
+					new Vector2D(calculateFiniteDifferences(valuesX), calculateFiniteDifferences(valuesY)), -k0);
+
+			// Attraction to foes
+			Vector2D foes = new Vector2D();
+			for (Agent f : player.getOtherAgents()) {
+				Vector2D xf = f.getVector();
+				Vector2D xfa = Vector2D.minus(xf, xa);
+				foes = Vector2D.plus(foes, Vector2D.multiplyByConst(xfa, k1
+						* (skew + f.getWetness() - a.getWetness())
+						* Math.pow(Vector2D.distance(xf, xa), -1 - invFoes)));
+			}
+
+			// Repulsion from close friends
+			Vector2D friends = new Vector2D();
+			for (Agent f : player.getMyAgents()) {
+				if (f.equals(a))
+					continue;
+				Vector2D xf = f.getVector();
+				Vector2D xfa = Vector2D.minus(xf, xa);
+				friends = Vector2D.plus(friends, Vector2D.multiplyByConst(xfa, -k2
+						* Math.pow(Vector2D.distance(xf, xa), -1 - invFriends)));
+			}
+
+			// SplashBomb appeal
+			final Vector2D splashBombAppeal =
+					splashBombLocationAppraisal.get(a.getAgentId() - 1).entrySet().stream()
+							.map(e -> new Coordinates(
+									e.getKey().getCoordinates().x() - location.x(),
+									e.getKey().getCoordinates().y() - location.x())
+									.rescale(e.getValue()))
+							.map(Coordinates::convertToVector)
+							.reduce(new Vector2D(), Vector2D::plus);
+
+			a.getForcesActingOn()[Force.DANGER_GRADIENT.type] = gradient;
+			a.getForcesActingOn()[Force.INTERACTION_FOES.type] = foes;
+			a.getForcesActingOn()[Force.INTERACTION_FRIENDS.type] = friends;
+			a.getForcesActingOn()[Force.SPLASH_BOMB_APPEAL.type] = splashBombAppeal;
+
+			// Attempt to move
+			final Vector2D totalForce = Arrays.stream(a.getForcesActingOn()).reduce(new Vector2D(), Vector2D::plus);
+			a.setTotalForce(totalForce);
+			a.setIntendedPath(Optional.ofNullable(moveFrom(totalForce, location))
+					.map(path1 -> grid.getPath(a.getLocation(), path1)));
+		}
 
 		grid.resetAgentsPresent(player.getMyAgents(), player.getOtherAgents());
 		SplashBomb.determineAllSplashBombs(grid);
 		for (Agent a : player.getMyAgents()) {
-			if (a.getSplashBombs() == 0 || a.getIntendedPath().filter(l -> l.size() == 1).isEmpty())
-				continue;
-			Map<Tile, Integer> splashBombTotalDamage = new HashMap<>(25);
-			final int x1 = a.getLocation().getCoordinates().x(), y1 = a.getLocation().getCoordinates().y();
-			for (int x = Math.max(x1 - 4, 0); x <= Math.min(x1 + 4, grid.getWidth() - 1); x++) {
-				final int ySpan = Math.max(4 - Math.abs(x - x1), 0);
-				for (int y = Math.max(y1 - ySpan, 0); y <= Math.min(y1 + ySpan, grid.getHeight() - 1); y++) {
-					final Tile t = grid.getTiles()[x][y];
-					if (SplashBomb.gridBombing.get(t).getTotalFriendlyWater() == 0)
-						splashBombTotalDamage.put(t, SplashBomb.gridBombing.get(t).getTotalFoeWater());
+			final int[][] shootDamageArea = a.calculateShootDamagePotential(grid,
+					a.getIntendedMove().orElse(a.getLocation()));
+
+			final Map<Agent, Integer> shootingDamage = new HashMap<>(player.getOtherAgents().size());
+			if (a.getCooldown() == 0)
+				player.getOtherAgents().forEach(foe ->
+						shootingDamage.put(foe,	shootDamageArea[foe.getLocation().getCoordinates().x()]
+								[foe.getLocation().getCoordinates().y()]));
+			final Optional<Map.Entry<Agent, Integer>> intendedShootingTarget = shootingDamage.entrySet().stream()
+					.filter(e -> e.getValue() > 0)
+					.max((e1, e2) -> { // Shoot to kill first...
+						final Agent a1 = e1.getKey(), a2 = e2.getKey();
+						if (a1.getWetness() - e1.getValue() <= 0 && a2.getWetness() - e2.getValue() > 0)
+							return 1;
+						if (a2.getWetness() - e2.getValue() <= 0 && a1.getWetness() - e1.getValue() > 0)
+							return -1;
+						if (e1.getValue().equals(e2.getValue())) // ...high-priority targets (= low shootCooldown) go
+							return a2.getShootCooldown() - a1.getShootCooldown(); // go second if expected damage equal
+						return e1.getValue() - e2.getValue(); }); // But most shots are for maximizing damage
+
+			final Map<Tile, Integer> splashBombTotalDamage = new HashMap<>(25);
+			if (a.getSplashBombs() > 0) {
+				final int x1 = a.getLocation().getCoordinates().x(), y1 = a.getLocation().getCoordinates().y();
+				for (int x = Math.max(x1 - 4, 0); x <= Math.min(x1 + 4, grid.getWidth() - 1); x++) {
+					final int ySpan = Math.max(4 - Math.abs(x - x1), 0);
+					for (int y = Math.max(y1 - ySpan, 0); y <= Math.min(y1 + ySpan, grid.getHeight() - 1); y++) {
+						final Tile t = grid.getTiles()[x][y];
+						if (SplashBomb.gridBombing.get(t).getTotalFriendlyWater() == 0)
+							splashBombTotalDamage.put(t, SplashBomb.gridBombing.get(t).getTotalFoeWater());
+					}
 				}
 			}
-			a.setIntendedSplashBomb(splashBombTotalDamage.entrySet().stream()
-					.max(Map.Entry.comparingByValue())
-					.map(Map.Entry::getKey));
-		}
+			final Optional<Map.Entry<Tile, Integer>> intendedSplashBomb = splashBombTotalDamage.entrySet().stream()
+					.filter(e -> e.getValue() > 0)
+					.max(Map.Entry.comparingByValue());
 
-		for (Agent a : player.getMyAgents())
-			a.setCommands(player);
+			intendedShootingTarget.ifPresent(e -> {
+				if (intendedSplashBomb.isEmpty() || intendedSplashBomb.get().getValue() <= e.getValue())
+					a.setIntendedShootingTarget(Optional.of(e.getKey()));
+			});
+			intendedSplashBomb.ifPresent(e -> {
+				if (intendedShootingTarget.isEmpty() || intendedShootingTarget.get().getValue() < e.getValue())
+					a.setIntendedSplashBomb(Optional.of(e.getKey()));
+			});
+		}
+	}
+
+	private int[] extractValues(final int xy, final int[][] totalFoeShootingPotential, final Coordinates coordinates) {
+		final int x = coordinates.x(), y = coordinates.y();
+		int[] array = new int[3];
+
+		if (xy == 0) { // X coordinate
+			array[0] = (x > 0 && grid.getTiles()[x - 1][y].getType() == Tile.Type.EMPTY)
+					? totalFoeShootingPotential[x - 1][y]
+					: -1;
+			array[2] = (x < grid.getWidth() - 1 && grid.getTiles()[x + 1][y].getType() == Tile.Type.EMPTY)
+					? totalFoeShootingPotential[x + 1][y]
+					: -1;
+		} else {       // Y coordinate
+			array[0] = (y > 0 && grid.getTiles()[x][y - 1].getType() == Tile.Type.EMPTY)
+					? totalFoeShootingPotential[x][y - 1]
+					: -1;
+			array[2] = (y < grid.getHeight() - 1 && grid.getTiles()[x][y + 1].getType() == Tile.Type.EMPTY)
+					? totalFoeShootingPotential[x][y + 1]
+					: -1;
+		}
+		array[1] = totalFoeShootingPotential[x][y];
+
+		return array;
+	}
+
+	private double calculateFiniteDifferences(final int[] array) {
+		if (array[0] != -1 && array[2] != -1)
+			return (array[2] - array[0]) / 2.0; // Three-point central difference formula
+		if (array[0] != -1)
+			return array[1] - array[0];         // Backward difference
+		if (array[2] != -1)
+			return array[2] - array[1];         // Forward difference
+		return 0.0;
+	}
+
+	private Tile moveFrom(final Vector2D totalForce, final Coordinates ca) {
+		final double absX = Math.abs(totalForce.x()), absY = Math.abs(totalForce.y());
+		Tile destination = null, t;
+
+		if (absX >= absY && (totalForce.x() >= minForce
+				&& (t = grid.getTiles()[ca.x() + 1][ca.y()]).getType() == Tile.Type.EMPTY)
+				|| absX >= absY && (totalForce.x() <= -minForce
+				&& (t = grid.getTiles()[ca.x() - 1][ca.y()]).getType() == Tile.Type.EMPTY)
+				|| (totalForce.y() >= minForce
+				&& (t = grid.getTiles()[ca.x()][ca.y() + 1]).getType() == Tile.Type.EMPTY)
+				|| (totalForce.y() <= minForce
+				&& (t = grid.getTiles()[ca.x()][ca.y() - 1]).getType() == Tile.Type.EMPTY))
+			destination = t;
+
+		return destination;
 	}
 
 	public List<String> issueCommands() {
 		return Arrays.stream(player.getAgents())
 				.filter(Objects::nonNull)
+				.peek(a -> a.setCommands(player))
 				.map(Agent::buildCommands)
 				.filter(Objects::nonNull)
 				.toList();
@@ -269,14 +427,20 @@ class Agent {
 	private final int shootCooldown;
 	private final int optimalRange;
 	private final int soakingPower;
+	private final int initSplashBombs;
 
 	private Tile location;
 	private int cooldown;
 	private int splashBombs;
 	private int wetness;
 
+	private Vector2D vector;
+	private final Vector2D[] forcesActingOn;
+	private Vector2D totalForces;
+
 	private Optional<List<Tile>> intendedPath;
 	private Optional<Tile> intendedMove;
+	private Optional<Agent> intendedShootingTarget;
 	private Optional<Tile> intendedSplashBomb;
 	private Optional<String> intendedMessage;
 	private String moveAction;
@@ -290,13 +454,15 @@ class Agent {
 			final int shootCooldown,
 			final int optimalRange,
 			final int soakingPower,
-			final int splashBombs) {
+			final int initSplashBombs) {
 		this.agentId = agentId;
 		myPlayer = playerId == myId;
 		this.shootCooldown = shootCooldown;
 		this.optimalRange = optimalRange;
 		this.soakingPower = soakingPower;
-		this.splashBombs = splashBombs;
+		this.initSplashBombs = initSplashBombs;
+
+		forcesActingOn = new Vector2D[Force.values().length];
 	}
 
 	public void setAgent(
@@ -309,8 +475,11 @@ class Agent {
 		this.splashBombs = splashBombs;
 		this.wetness = wetness;
 
+		vector = location.getCoordinates().convertToVector();
+
 		intendedPath = Optional.empty();
 		intendedMove = Optional.empty();
+		intendedShootingTarget = Optional.empty();
 		intendedSplashBomb = Optional.empty();
 		intendedMessage = Optional.empty();
 		moveAction = null;
@@ -322,21 +491,35 @@ class Agent {
 
 	public boolean isMyPlayer() { return myPlayer; }
 
+	public int getShootCooldown() { return shootCooldown; }
+
 	public Tile getLocation() { return location; }
+
+	public int getCooldown() { return cooldown; }
 
 	public int getSplashBombs() { return splashBombs; }
 
 	public int getWetness() { return wetness; }
 
-	public Optional<List<Tile>> getIntendedPath() { return intendedPath; }
+	public Vector2D getVector() { return vector; }
+
+	public Vector2D[] getForcesActingOn() { return forcesActingOn; }
 
 	public Optional<Tile> getIntendedMove() { return intendedMove; }
 
-	public void setPath(final Optional<List<Tile>> intendedPath) {
+	public void setTotalForce(Vector2D totalForces) {
+		this.totalForces = totalForces;
+	}
+
+	public void setIntendedPath(final Optional<List<Tile>> intendedPath) {
 		this.intendedPath = intendedPath;
 		intendedMove = intendedPath
 				.filter(l -> l.size() > 1)
 				.map(l -> l.get(1));
+	}
+
+	public void setIntendedShootingTarget(Optional<Agent> intendedShootingTarget) {
+		this.intendedShootingTarget = intendedShootingTarget;
 	}
 
 	public void setIntendedSplashBomb(final Optional<Tile> intendedSplashBomb) {
@@ -347,15 +530,15 @@ class Agent {
 		this.intendedMessage = intendedMessage;
 	}
 
-	public int[][] calculateShootDamageArea(final Grid grid, final Tile from) {
+	public int[][] calculateShootDamagePotential(final Grid grid, final Tile from) {
 		final int width = grid.getWidth();
 		final int height = grid.getHeight();
-		final Pair shooterCoordinates = from.getCoordinates();
+		final Coordinates shooterCoordinates = from.getCoordinates();
 		final int[][] damageArea = new int[width][height];
 
 		for (int y = 0; y < height; y++)
 			for (int x = 0; x < width; x++) {
-				final Pair target = grid.getTiles()[x][y].getCoordinates();
+				final Coordinates target = grid.getTiles()[x][y].getCoordinates();
 				final int dist = shooterCoordinates.distanceTo(target);
 				if (dist <= optimalRange)
 					damageArea[x][y] = soakingPower;
@@ -372,25 +555,13 @@ class Agent {
 		return damageArea;
 	}
 
-	public int[][] calculateShootDamageArea(final Grid grid) {
-		return calculateShootDamageArea(grid, location);
-	}
-
-	public int calculateShootDamageOnTarget(final Grid grid, final Tile from, final Agent target) {
-		return calculateShootDamageArea(grid, from)
-				[target.location.getCoordinates().x()][target.location.getCoordinates().y()];
-	}
-
-	public int calculateShootDamageOnTarget(final Grid grid, final Agent target) {
-		return calculateShootDamageArea(grid)
-				[target.location.getCoordinates().x()][target.location.getCoordinates().y()];
-	}
-
 	public void setCommands(final Player player) {
 		intendedMove.ifPresent(t -> moveAction = Command.MOVE.formCommand(null, t, null));
-		intendedSplashBomb.ifPresentOrElse(
-				t -> combatAction = Command.THROW.formCommand(null, t, null),
-				() -> combatAction = Command.HUNKER_DOWN.formCommand(null, null, ""));
+		intendedShootingTarget.ifPresentOrElse(
+				a -> combatAction = Command.SHOOT.formCommand(a, null, null),
+				() -> intendedSplashBomb.ifPresentOrElse(
+						t -> combatAction = Command.THROW.formCommand(null, t, null),
+						() -> combatAction = Command.HUNKER_DOWN.formCommand(null, null, "")));
 		if (player.getGameTurn() == 1)
 			messageAction = Command.MESSAGE.formCommand(null, null, "gl hf");
 		else
@@ -412,15 +583,51 @@ class Agent {
 		return commands.toString();
 	}
 
+	@Override
+	public String toString() {
+		return "AgentId=" + agentId +
+				"\n  myPlayer=" + myPlayer +
+				"\n  shootCooldown=" + shootCooldown +
+				"\n  optimalRange=" + optimalRange +
+				"\n  soakingPower=" + soakingPower +
+				"\n  initSplashBombs=" + initSplashBombs +
+				"\n  location=" + location +
+				"\n  cooldown=" + cooldown +
+				"\n  splashBombs=" + splashBombs +
+				"\n  wetness=" + wetness +
+				"\n  forcesActingOn=" +
+				"\n    " + Force.DANGER_GRADIENT     + ": " + forcesActingOn[Force.DANGER_GRADIENT.type] +
+				"\n    " + Force.INTERACTION_FRIENDS + ": " + forcesActingOn[Force.INTERACTION_FRIENDS.type] +
+				"\n    " + Force.INTERACTION_FOES    + ": " + forcesActingOn[Force.INTERACTION_FOES.type] +
+				"\n    " + Force.SPLASH_BOMB_APPEAL  + ": " + forcesActingOn[Force.SPLASH_BOMB_APPEAL.type] +
+				"\n  totalForces=" + totalForces +
+				"\n, intendedPath=" + intendedPath +
+				"\n, intendedMove=" + intendedMove +
+				"\n, intendedSplashBomb=" + intendedSplashBomb +
+				"\n, intendedMessage=" + intendedMessage;
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (o == null || getClass() != o.getClass()) return false;
+		Agent agent = (Agent) o;
+		return agentId == agent.agentId;
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hashCode(agentId);
+	}
+
 }
 
 class Grid {
 
 	private final int width;
 	private final int height;
-	final int totalTiles;
+	private final int totalTiles;
 	private final Tile[][] tiles;
-	private final Map<Pair, Tile.Type[][]> coverAreaMap;
+	private final Map<Coordinates, Tile.Type[][]> coverAreaMap;
 	private final int[][] distances;
 	private final Tile[][] previous;
 
@@ -446,12 +653,12 @@ class Grid {
 
 	public void resetAgentsPresent(final List<Agent> myAgents, final List<Agent> otherAgents) {
 		resetAgentsPresent();
-		for (Agent ma : myAgents)
-			ma.getIntendedMove().ifPresentOrElse(
-					t -> t.setAgentPresent(ma),
-					() -> ma.getLocation().setAgentPresent(ma));
-		for (Agent oa : otherAgents)
-			oa.getLocation().setAgentPresent(oa);
+		for (Agent a : myAgents)
+			a.getIntendedMove().ifPresentOrElse(
+					t -> t.setAgentPresent(a),
+					() -> a.getLocation().setAgentPresent(a));
+		for (Agent foe : otherAgents)
+			foe.getLocation().setAgentPresent(foe);
 	}
 
 	public int getWidth() {	return width; }
@@ -462,13 +669,13 @@ class Grid {
 
 	public Tile[][] getTiles() { return tiles; }
 
-	public Map<Pair, Tile.Type[][]> getCoverAreaMap() { return coverAreaMap; }
+	public Map<Coordinates, Tile.Type[][]> getCoverAreaMap() { return coverAreaMap; }
 
 	public void determineCoverArea() {
 		for (int x1 = 0; x1 < width; x1++)
 			for (int y1 = 0; y1 < height; y1++) {
 				final Tile.Type[][] coverArea = new Tile.Type[width][height];
-				final Pair from = tiles[x1][y1].getCoordinates();
+				final Coordinates from = tiles[x1][y1].getCoordinates();
 
 				for (int x = 0; x < width; x++)
 					for (int y = 0; y < height; y++)
@@ -509,6 +716,7 @@ class Grid {
 			}
 	}
 
+	// Floyd-Warshall pathing algorithm
 	// https://en.wikipedia.org/wiki/Floyd%E2%80%93Warshall_algorithm
 	public void determinePathing() {
 		for (int i = 0; i < totalTiles; i++)
@@ -580,7 +788,7 @@ class Grid {
 
 class Tile {
 
-	private final Pair coordinates;
+	private final Coordinates coordinates;
 	private final Type type;
 	private final int index;
 	private final Tile[] neighbors;
@@ -617,24 +825,24 @@ class Tile {
 		TOP(2),
 		BOTTOM(3);
 
-		private final int index;
+		public final int which;
 
-		Neighbor(final int index) { this.index = index; }
+		Neighbor(final int which) { this.which = which; }
 
 	}
 
 	public Tile(final int x, final int y, final int type) {
-		coordinates = new Pair(x, y);
+		coordinates = new Coordinates(x, y);
 		switch (type) {
 			case 1: this.type = Type.LOW_COVER; break;
 			case 2: this.type = Type.HIGH_COVER; break;
 			case 0: default: this.type = Type.EMPTY; break;
 		}
 		index = indices++;
-		neighbors = new Tile[4];
+		neighbors = new Tile[Neighbor.values().length];
 	}
 
-	public Pair getCoordinates() { return coordinates; }
+	public Coordinates getCoordinates() { return coordinates; }
 
 	public Type getType() { return type; }
 
@@ -643,7 +851,7 @@ class Tile {
 	public Agent getAgentPresent() { return agentPresent; }
 
 	public void setNeighbor(final Neighbor n, final Tile t) {
-		neighbors[n.index] = t;
+		neighbors[n.which] = t;
 	}
 
 	public void setAgentPresent(final Agent agentPresent) { this.agentPresent = agentPresent; }
@@ -666,17 +874,66 @@ class Tile {
 
 }
 
-record Pair(int x, int y) {
+record Coordinates(int x, int y) {
 
 	@Override
 	public String toString() {
 		return x + " " + y;
 	}
 
-	public int distanceTo(final Pair p) { // Manhattan distance
-		Objects.requireNonNull(p);
-		return Math.abs(x - p.x) + Math.abs(y - p.y);
+	public int distanceTo(Coordinates c) { // "Taxicab" distance
+		return Math.abs(x - c.x) + Math.abs(y - c.y);
 	}
+
+	public Coordinates rescale(int factor) {
+		return new Coordinates(x * factor, y * factor);
+	}
+
+	public Vector2D convertToVector() {
+		return new Vector2D(x, y);
+	}
+
+}
+
+record Vector2D(double x, double y) {
+
+	public Vector2D() {
+		this(0.0, 0.0);
+	}
+
+	@Override
+	public String toString() {
+		return String.format("(%1$ 10.3f, %2$ 10.3f)", x, y);
+	}
+
+	public static Vector2D plus(final Vector2D v1, final Vector2D v2) {
+		return new Vector2D(v1.x + v2.x, v1.y + v2.y);
+	}
+
+	public static Vector2D minus(final Vector2D v1, final Vector2D v2) {
+		return new Vector2D(v1.x - v2.x, v1.y - v2.y);
+	}
+
+	public static Vector2D multiplyByConst(final Vector2D v, double k) {
+		return new Vector2D(k * v.x, k * v.y);
+	}
+
+	public static double distance(final Vector2D v1, final Vector2D v2) { // "Euclidean" distance
+		return Math.sqrt((v1.x - v2.x) * (v1.x - v2.x) + (v1.y - v2.y) * (v1.y - v2.y));
+	}
+
+}
+
+enum Force {
+
+	DANGER_GRADIENT(0),
+	INTERACTION_FRIENDS(1),
+	INTERACTION_FOES(2),
+	SPLASH_BOMB_APPEAL(3);
+
+	public final int type;
+
+	Force(final int type) { this.type = type; }
 
 }
 
