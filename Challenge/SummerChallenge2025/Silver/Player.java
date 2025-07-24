@@ -722,7 +722,7 @@ class Grid {
 					if (cover != Tile.Type.EMPTY)
 						for (int y = 0; y < height; y++)
 							for (int x = 0; x < x1 - 1; x++)
-								if ((Math.abs(y - y1) <= x1 - x) && ((x1 - x) > 2 || Math.abs(y - y1) == 2))
+								if ((x1 - x) > 2 || Math.abs(y - y1) >= 2)
 									coverArea[x][y] = coverArea[x][y].maxCover(cover);
 				}
 				if (x1 < width - 2) {
@@ -730,7 +730,7 @@ class Grid {
 					if (cover != Tile.Type.EMPTY)
 						for (int y = 0; y < height; y++)
 							for (int x = width - 1; x > x1 + 1; x--)
-								if ((Math.abs(y - y1) <= x - x1) && ((x - x1) > 2 || Math.abs(y - y1) == 2))
+								if ((x - x1) > 2 || Math.abs(y - y1) >= 2)
 									coverArea[x][y] = coverArea[x][y].maxCover(cover);
 				}
 				if (y1 > 1) {
@@ -738,7 +738,7 @@ class Grid {
 					if (cover != Tile.Type.EMPTY)
 						for (int x = 0; x < width; x++)
 							for (int y = 0; y < y1 - 1; y++)
-								if ((Math.abs(x - x1) <= y1 - y) && ((y1 - y) > 2 || Math.abs(x - x1) == 2))
+								if ((y1 - y) > 2 || Math.abs(x - x1) >= 2)
 									coverArea[x][y] = coverArea[x][y].maxCover(cover);
 				}
 				if (y1 < height - 2) {
@@ -746,7 +746,7 @@ class Grid {
 					if (cover != Tile.Type.EMPTY)
 						for (int x = 0; x < width; x++)
 							for (int y = height - 1; y > y1 + 1; y--)
-								if ((Math.abs(x - x1) <= y - y1) && ((y - y1) > 2 || Math.abs(x - x1) == 2))
+								if ((y - y1) > 2 || Math.abs(x - x1) >= 2)
 									coverArea[x][y] = coverArea[x][y].maxCover(cover);
 				}
 				coverAreaMap.put(from, coverArea);
