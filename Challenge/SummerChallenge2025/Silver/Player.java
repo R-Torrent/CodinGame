@@ -24,7 +24,7 @@ class Player {
 	private int gameTurn;
 
 	private static final int limitGameTurns = 100;
-	private static final boolean debug = true; // Debug messages on
+	private static final boolean debug = false; // Debug messages on
 
 	public static void main(String[] args) {
 		Player player = new Player();
@@ -174,7 +174,7 @@ class Brain {
 			"Once more unto the breach, dear friends",
 			"You rebel scum!",
 			"How do you like them apples?" };
-	private static boolean[] messagesDisplayed = new boolean[messages.length];
+	private static final boolean[] messagesDisplayed = new boolean[messages.length];
 
 	public Brain(final Player player, final Grid grid) {
 		this.player = player;
@@ -300,7 +300,8 @@ class Brain {
 
 			final Map<Tile, Integer> splashBombTotalDamage = new HashMap<>(25);
 			if (a.getSplashBombs() > 0) {
-				final int x1 = a.getLocation().getCoordinates().x(), y1 = a.getLocation().getCoordinates().y();
+				final int x1 = a.getIntendedMove().orElse(a.getLocation()).getCoordinates().x();
+				final int y1 = a.getIntendedMove().orElse(a.getLocation()).getCoordinates().y();
 				for (int x = Math.max(x1 - 4, 0); x <= Math.min(x1 + 4, grid.getWidth() - 1); x++) {
 					final int ySpan = Math.max(4 - Math.abs(x - x1), 0);
 					for (int y = Math.max(y1 - ySpan, 0); y <= Math.min(y1 + ySpan, grid.getHeight() - 1); y++) {
