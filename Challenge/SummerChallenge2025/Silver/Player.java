@@ -73,14 +73,15 @@ class Player {
 	private void runGame() {
 		// game loop
 		while (gameTurn <= limitGameTurns) {
-			grid.resetAgentsPresent();
+			grid.resetAgentsRemaining();
+
 			loadTurn();
+
 			overmind.think();
+
 			if (debug)
 				myAgents.forEach(System.err::println);
 
-			// Write an action using System.out.println()
-			// To debug: System.err.println("Debug messages...");
 			overmind.issueCommands().forEach(System.out::println);
 
 			gameTurn++;
@@ -152,6 +153,7 @@ class Brain {
 	private final Player player;
 	private final Grid grid;
 	private final Map<Integer, Map<Tile, Integer>> splashBombLocationAppraisal;
+	private Set<Agent> otherAgents;
 
 	// Aversion to danger (AKA constant of proportionality with the gradient of the totalFoeShootingPotential)
 	private static final double k0 = 10.0;
@@ -275,33 +277,46 @@ class Brain {
 					.map(destination -> grid.getPath(a.getLocation(), destination)));
 		}
 
-		grid.resetAgentsPresent(player.getMyAgents(), player.getOtherAgents());
+		// Target selection
+		grid.resetAgentsRemaining(player.getMyAgents());
 		SplashBomb.determineAllSplashBombs(grid);
-		for (Agent a : player.getMyAgents()) {
-			final int[][] shootDamageArea = a.calculateShootDamagePotential(grid,
-					a.getIntendedMove().orElse(a.getLocation()));
+		final List<Agent> myAgents = player.getMyAgents().stream()
+				.sorted(Comparator.comparing(Agent::getOptimalRange)) // Close-range agents go first
+				.toList();
+		otherAgents = new HashSet<>(player.getOtherAgents());
+		for (Agent a : myAgents) {
+			final Tile presumedLocation = a.getIntendedMove().orElse(a.getLocation());
 
-			final Map<Agent, Integer> shootingDamage = new HashMap<>(player.getOtherAgents().size());
+			final int[][] shootDamageArea = a.calculateShootDamagePotential(grid, presumedLocation);
+			final Map<Agent, Integer> shootingDamage = new HashMap<>(otherAgents.size());
 			if (a.getCooldown() == 0)
-				player.getOtherAgents().forEach(foe ->
+				otherAgents.forEach(foe ->
 						shootingDamage.put(foe,	shootDamageArea[foe.getLocation().getCoordinates().x()]
 								[foe.getLocation().getCoordinates().y()]));
 			final Optional<Map.Entry<Agent, Integer>> intendedShootingTarget = shootingDamage.entrySet().stream()
 					.filter(e -> e.getValue() > 0)
-					.max((e1, e2) -> { // Shoot to kill first...
+					.max((e1, e2) -> {
 						final Agent a1 = e1.getKey(), a2 = e2.getKey();
+
+						// Shoot to kill first...
+						if (a1.getWetness() - e1.getValue() > 0 && a2.getWetness() - e2.getValue() <= 0)
+							return -1;
 						if (a1.getWetness() - e1.getValue() <= 0 && a2.getWetness() - e2.getValue() > 0)
 							return 1;
-						if (a2.getWetness() - e2.getValue() <= 0 && a1.getWetness() - e1.getValue() > 0)
-							return -1;
-						if (e1.getValue().equals(e2.getValue())) // ...high-priority targets (= low shootCooldown) go
-							return a2.getShootCooldown() - a1.getShootCooldown(); // go second if expected damage equal
-						return e1.getValue() - e2.getValue(); }); // But most shots are for maximizing damage
+						if (a1.getWetness() - e1.getValue() <= 0 && a2.getWetness() - e2.getValue() <= 0)
+							return ((a1.getWetness() - e1.getValue()) - (a2.getWetness() - e2.getValue()));
+
+						// ...very wet targets go second if the expected damage is equal...
+						if (e1.getValue().equals(e2.getValue()))
+							return a1.getWetness() - a2.getWetness();
+
+						// ...but most shots are for maximizing damage
+						return e1.getValue() - e2.getValue(); });
 
 			final Map<Tile, Integer> splashBombTotalDamage = new HashMap<>(25);
 			if (a.getSplashBombs() > 0) {
-				final int x1 = a.getIntendedMove().orElse(a.getLocation()).getCoordinates().x();
-				final int y1 = a.getIntendedMove().orElse(a.getLocation()).getCoordinates().y();
+				final int x1 = presumedLocation.getCoordinates().x();
+				final int y1 = presumedLocation.getCoordinates().y();
 				for (int x = Math.max(x1 - 4, 0); x <= Math.min(x1 + 4, grid.getWidth() - 1); x++) {
 					final int ySpan = Math.max(4 - Math.abs(x - x1), 0);
 					for (int y = Math.max(y1 - ySpan, 0); y <= Math.min(y1 + ySpan, grid.getHeight() - 1); y++) {
@@ -313,11 +328,20 @@ class Brain {
 			}
 			final Optional<Map.Entry<Tile, Integer>> intendedSplashBomb = splashBombTotalDamage.entrySet().stream()
 					.filter(e -> e.getValue() > 0)
-					.max(Map.Entry.comparingByValue());
+					.max((e1, e2) -> {
+						// Prioritize damage...
+						if (!e1.getValue().equals(e2.getValue()))
+							return e1.getValue() - e2.getValue();
+						// ...but direct hits are preferable
+						return SplashBomb.gridBombing.get(e1.getKey()).landsOnHead()
+								- SplashBomb.gridBombing.get(e1.getKey()).landsOnHead();
+					});
 
 			intendedShootingTarget.ifPresent(e -> {
 				if (intendedSplashBomb.isEmpty() || intendedSplashBomb.get().getValue() <= e.getValue()) {
 					a.setIntendedShootingTarget(Optional.of(e.getKey()));
+					if (e.getKey().getWetness() - e.getValue() * 3 / 4 <= 0 )
+						removePresumedDead(e.getKey()); // Presumed dead even with hunkering
 					switch ((a.getAgentId() + player.getGameTurn()) % 40) {
 						case 10: displayMessage(a, 0); break;
 						case 20: displayMessage(a, 1); break;
@@ -329,6 +353,10 @@ class Brain {
 			intendedSplashBomb.ifPresent(e -> {
 				if (intendedShootingTarget.isEmpty() || intendedShootingTarget.get().getValue() < e.getValue()) {
 					a.setIntendedSplashBomb(Optional.of(e.getKey()));
+					SplashBomb.gridBombing.get(e.getKey()).getAgentsHit().stream()
+							.filter(a1 -> a1.getWetness() - SplashBomb.bombWetness * 3 / 4 <= 0)
+							.forEach(this::removePresumedDead); // Presumed dead even with hunkering
+
 					switch ((a.getAgentId() + player.getGameTurn()) % 20) {
 						case  7: displayMessage(a, 3); break;
 						case 17: displayMessage(a, 4); break;
@@ -339,9 +367,15 @@ class Brain {
 		}
 	}
 
+	private void removePresumedDead(final Agent presumedDead) {
+		otherAgents.remove(presumedDead);
+		presumedDead.getLocation().setAgentPresent(null);
+		SplashBomb.determineAllSplashBombs(grid);
+	}
+
 	private int[] extractValues(final int xy, final int[][] totalFoeShootingPotential, final Coordinates coordinates) {
 		final int x = coordinates.x(), y = coordinates.y();
-		int[] array = new int[3];
+		final int[] array = new int[3];
 
 		if (xy == 0) { // X coordinate
 			array[0] = (x > 0 && grid.getTiles()[x - 1][y].getType() == Tile.Type.EMPTY)
@@ -370,7 +404,7 @@ class Brain {
 			return array[1] - array[0];         // Backward difference
 		if (array[2] != -1)
 			return array[2] - array[1];         // Forward difference
-		return 0.0;
+		return -0.0;
 	}
 
 	private Tile moveFrom(final Vector2D totalForce, final Coordinates from) {
@@ -528,6 +562,8 @@ class Agent {
 
 	public int getShootCooldown() { return shootCooldown; }
 
+	public int getOptimalRange() { return optimalRange; }
+
 	public Tile getLocation() { return location; }
 
 	public int getCooldown() { return cooldown; }
@@ -682,20 +718,18 @@ class Grid {
 		tiles[x][y] = new Tile(x, y, tileType);
 	}
 
-	public void resetAgentsPresent() {
+	public void resetAgentsRemaining() {
 		for (int x = 0; x < width; x++)
 			for (int y = 0; y < height; y++)
 				tiles[x][y].setAgentPresent(null);
 	}
 
-	public void resetAgentsPresent(final List<Agent> myAgents, final List<Agent> otherAgents) {
-		resetAgentsPresent();
-		for (Agent foe : otherAgents)
-			foe.getLocation().setAgentPresent(foe);
+	public void resetAgentsRemaining(final List<Agent> myAgents) {
 		for (Agent a : myAgents)
-			a.getIntendedMove().ifPresentOrElse(
-					t -> t.setAgentPresent(a),
-					() -> a.getLocation().setAgentPresent(a));
+			a.getIntendedMove().ifPresent(t -> {
+				a.getLocation().setAgentPresent(null);
+				t.setAgentPresent(a);
+			});
 	}
 
 	public int getWidth() {	return width; }
@@ -979,17 +1013,24 @@ class SplashBomb {
 
 	private int totalFoeWater;
 	private int totalFriendlyWater;
+	private int landsOnHead;
+	final private Set<Agent> agentsHit;
 
 	public static Map<Tile, SplashBomb> gridBombing;
 	public static final int bombWetness = 30;
 
 	private SplashBomb(final Tile tile) {
 		gridBombing.put(tile, this);
+		agentsHit = new HashSet<>(9);
 	}
 
 	public int getTotalFoeWater() { return totalFoeWater; }
 
 	public int getTotalFriendlyWater() { return totalFriendlyWater; }
+
+	public int landsOnHead() { return landsOnHead; }
+
+	public Set<Agent> getAgentsHit() { return agentsHit; }
 
 	public static void determineAllSplashBombs(final Grid grid) {
 		gridBombing = new HashMap<>(grid.getTotalTiles());
@@ -997,6 +1038,7 @@ class SplashBomb {
 		for (int x1 = 0; x1 < grid.getWidth(); x1++)
 			for (int y1 = 0; y1 < grid.getHeight(); y1++) {
 				final SplashBomb bomb = new SplashBomb(grid.getTiles()[x1][y1]);
+				bomb.landsOnHead = grid.getTiles()[x1][y1].getAgentPresent() != null ? 1 : 0;
 				for (int x = Math.max(x1 - 1, 0); x <= Math.min(x1 + 1, grid.getWidth() - 1); x++)
 					for (int y = Math.max(y1 - 1, 0); y <= Math.min(y1 + 1, grid.getHeight() - 1); y++)
 						Optional.ofNullable(grid.getTiles()[x][y].getAgentPresent())
@@ -1005,6 +1047,7 @@ class SplashBomb {
 										bomb.totalFriendlyWater += bombWetness;
 									else
 										bomb.totalFoeWater += bombWetness;
+									bomb.agentsHit.add(a);
 								});
 			}
 	}
