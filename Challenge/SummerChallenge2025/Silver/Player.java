@@ -167,6 +167,8 @@ class Brain {
 	private static final double k2 = 100.0;
 	// Inverse Power by which repulsion between friends falls
 	private static final double invFriends = 4.0;
+	// Constant of appeal to SplashBomb runs
+	private static final double splashBombAppealMultiplier = 2.0;
 	// Minimum force that can induce a movement
 	private static final double minForce = 20.0;
 
@@ -256,13 +258,14 @@ class Brain {
 			}
 
 			// SplashBomb appeal
-			final Vector2D splashBombAppeal =
+			final Vector2D splashBombAppeal = Vector2D.multiplyByConst(
 					splashBombLocationAppraisal.get(a.getAgentId() - 1).entrySet().stream()
 							.map(e -> new Coordinates(
 									e.getKey().getCoordinates().x() - location.x(),
-									e.getKey().getCoordinates().y() - location.x()).rescale(e.getValue()))
+									e.getKey().getCoordinates().y() - location.y()).rescale(e.getValue()))
 							.map(Coordinates::convertToVector)
-							.reduce(new Vector2D(), Vector2D::plus);
+							.reduce(new Vector2D(), Vector2D::plus),
+					splashBombAppealMultiplier);
 
 			a.getForcesActingOn()[Force.DANGER_GRADIENT.type] = gradient;
 			a.getForcesActingOn()[Force.INTERACTION_FOES.type] = foes;
@@ -1056,9 +1059,11 @@ class SplashBomb {
 						Optional.ofNullable(grid.getTiles()[x][y].getAgentPresent())
 								.ifPresent(a -> {
 									if (a.isMyPlayer())
-										bomb.totalFriendlyWater += bombWetness;
+										bomb.totalFriendlyWater +=
+												Math.min(bombWetness, Agent.deathWetness - a.getWetness());
 									else
-										bomb.totalFoeWater += bombWetness;
+										bomb.totalFoeWater +=
+												Math.min(bombWetness, Agent.deathWetness - a.getWetness());
 									bomb.agentsHit.add(a);
 								});
 			}
