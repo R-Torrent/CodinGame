@@ -343,8 +343,7 @@ class Brain {
 			intendedShootingTarget.ifPresent(e -> {
 				if (intendedSplashBomb.isEmpty() || intendedSplashBomb.get().getValue() <= e.getValue()) {
 					a.setIntendedShootingTarget(Optional.of(e.getKey()));
-					if (e.getKey().getWetness() + e.getValue() * 3 / 4 >= Agent.deathWetness )
-						removePresumedDead(e.getKey()); // Presumed dead even with hunkering
+					presumedWetnessHit(e.getKey(), e.getValue());
 					switch ((a.getAgentId() + player.getGameTurn()) % 40) {
 						case 10: displayMessage(a, 0); break;
 						case 20: displayMessage(a, 1); break;
@@ -356,10 +355,8 @@ class Brain {
 			intendedSplashBomb.ifPresent(e -> {
 				if (intendedShootingTarget.isEmpty() || intendedShootingTarget.get().getValue() < e.getValue()) {
 					a.setIntendedSplashBomb(Optional.of(e.getKey()));
-					SplashBomb.gridBombing.get(e.getKey()).getAgentsHit().stream()
-							.filter(a1 -> a1.getWetness() + SplashBomb.bombWetness * 3 / 4 >= Agent.deathWetness)
-							.forEach(this::removePresumedDead); // Presumed dead even with hunkering
-
+					SplashBomb.gridBombing.get(e.getKey()).getAgentsHit()
+							.forEach(victim -> presumedWetnessHit(victim, SplashBomb.bombWetness));
 					switch ((a.getAgentId() + player.getGameTurn()) % 20) {
 						case  7: displayMessage(a, 3); break;
 						case 17: displayMessage(a, 4); break;
@@ -370,10 +367,15 @@ class Brain {
 		}
 	}
 
-	private void removePresumedDead(final Agent presumedDead) {
-		otherAgents.remove(presumedDead);
-		presumedDead.getLocation().setAgentPresent(null);
-		SplashBomb.determineAllSplashBombs(grid);
+	private void presumedWetnessHit(final Agent presumedVictim, final int damage) {
+		// Account for possible 'HUNKER_DOWN' from the victim;
+		final int presumedWetness = presumedVictim.getWetness() + damage * 3 / 4;
+		presumedVictim.setWetness(presumedWetness);
+		if (presumedWetness >= Agent.deathWetness) {
+			otherAgents.remove(presumedVictim);
+			presumedVictim.getLocation().setAgentPresent(null);
+			SplashBomb.determineAllSplashBombs(grid);
+		}
 	}
 
 	private int[] extractValues(final int xy, final int[][] totalFoeShootingPotential, final Coordinates coordinates) {
@@ -582,6 +584,8 @@ class Agent {
 	public Vector2D[] getForcesActingOn() { return forcesActingOn; }
 
 	public Optional<Tile> getIntendedMove() { return intendedMove; }
+
+	public void setWetness(int wetness) { this.wetness = wetness; }
 
 	public void setTotalForce(Vector2D totalForces) {
 		this.totalForces = totalForces;
