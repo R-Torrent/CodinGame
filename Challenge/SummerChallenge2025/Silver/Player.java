@@ -299,14 +299,17 @@ class Brain {
 						final Agent a1 = e1.getKey(), a2 = e2.getKey();
 
 						// Shoot to kill first...
-						if (a1.getWetness() - e1.getValue() > 0 && a2.getWetness() - e2.getValue() <= 0)
+						if (a1.getWetness() + e1.getValue() < Agent.deathWetness
+								&& a2.getWetness() + e2.getValue() >= Agent.deathWetness)
 							return -1;
-						if (a1.getWetness() - e1.getValue() <= 0 && a2.getWetness() - e2.getValue() > 0)
+						if (a1.getWetness() + e1.getValue() >= Agent.deathWetness
+								&& a2.getWetness() + e2.getValue() < Agent.deathWetness)
 							return 1;
-						if (a1.getWetness() - e1.getValue() <= 0 && a2.getWetness() - e2.getValue() <= 0)
-							return ((a1.getWetness() - e1.getValue()) - (a2.getWetness() - e2.getValue()));
+						if (a1.getWetness() + e1.getValue() >= Agent.deathWetness
+								&& a2.getWetness() + e2.getValue() >= Agent.deathWetness)
+							return ((a2.getWetness() + e2.getValue()) - (a1.getWetness() + e1.getValue()));
 
-						// ...very wet targets go second if the expected damage is equal...
+						// ...then very wet targets, should the expected damage be equal...
 						if (e1.getValue().equals(e2.getValue()))
 							return a1.getWetness() - a2.getWetness();
 
@@ -334,13 +337,13 @@ class Brain {
 							return e1.getValue() - e2.getValue();
 						// ...but direct hits are preferable
 						return SplashBomb.gridBombing.get(e1.getKey()).landsOnHead()
-								- SplashBomb.gridBombing.get(e1.getKey()).landsOnHead();
+								- SplashBomb.gridBombing.get(e2.getKey()).landsOnHead();
 					});
 
 			intendedShootingTarget.ifPresent(e -> {
 				if (intendedSplashBomb.isEmpty() || intendedSplashBomb.get().getValue() <= e.getValue()) {
 					a.setIntendedShootingTarget(Optional.of(e.getKey()));
-					if (e.getKey().getWetness() - e.getValue() * 3 / 4 <= 0 )
+					if (e.getKey().getWetness() + e.getValue() * 3 / 4 >= Agent.deathWetness )
 						removePresumedDead(e.getKey()); // Presumed dead even with hunkering
 					switch ((a.getAgentId() + player.getGameTurn()) % 40) {
 						case 10: displayMessage(a, 0); break;
@@ -354,7 +357,7 @@ class Brain {
 				if (intendedShootingTarget.isEmpty() || intendedShootingTarget.get().getValue() < e.getValue()) {
 					a.setIntendedSplashBomb(Optional.of(e.getKey()));
 					SplashBomb.gridBombing.get(e.getKey()).getAgentsHit().stream()
-							.filter(a1 -> a1.getWetness() - SplashBomb.bombWetness * 3 / 4 <= 0)
+							.filter(a1 -> a1.getWetness() + SplashBomb.bombWetness * 3 / 4 >= Agent.deathWetness)
 							.forEach(this::removePresumedDead); // Presumed dead even with hunkering
 
 					switch ((a.getAgentId() + player.getGameTurn()) % 20) {
@@ -516,6 +519,8 @@ class Agent {
 	private String combatAction;
 	private String messageAction;
 
+	public static final int deathWetness = 100;
+
 	public Agent(
 			final int myId,
 			final int agentId,
@@ -671,13 +676,13 @@ class Agent {
 				"\n    " + Force.INTERACTION_FRIENDS + ":" + forcesActingOn[Force.INTERACTION_FRIENDS.type] +
 				"\n    " + Force.INTERACTION_FOES    + ":" + forcesActingOn[Force.INTERACTION_FOES.type] +
 				"\n    " + Force.SPLASH_BOMB_APPEAL  + ":" + forcesActingOn[Force.SPLASH_BOMB_APPEAL.type] +
-				"\n  totalForces=" + totalForces + (intendedPath.isEmpty() ? "" :
-				"\n  intendedPath=" + intendedPath.get()) + (intendedMove. isEmpty() ? "" :
-				"\n  intendedMove=" + intendedMove.get()) + (intendedShootingTarget.isEmpty() ? "" :
-				"\n  intendedShootingTarget=" + intendedShootingTarget.get().agentId)
-						+ (intendedSplashBomb.isEmpty() ? "" :
-				"\n  intendedSplashBomb=" + intendedSplashBomb.get()) + (intendedMessage.isEmpty() ? "" :
-				"\n  intendedMessage=" + intendedMessage.get());
+				"\n  totalForces=" + totalForces +
+				(intendedPath.map(tiles -> "\n  intendedPath=" + tiles).orElse("")) +
+				(intendedMove.map(tile -> "\n  intendedMove=" + tile).orElse("")) +
+				(intendedShootingTarget.map(agent -> "\n  intendedShootingTarget="
+						+ agent.agentId).orElse("")) +
+				(intendedSplashBomb.map(value -> "\n  intendedSplashBomb=" + value).orElse("")) +
+				(intendedMessage.map(s -> "\n  intendedMessage=" + s).orElse(""));
 	}
 
 	@Override
