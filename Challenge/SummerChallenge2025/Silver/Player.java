@@ -166,7 +166,7 @@ class Brain {
 	// Constant of repulsion between friends
 	private static final double k2 = 100.0;
 	// Inverse Power by which repulsion between friends falls
-	private static final double invFriends = 2.0;
+	private static final double invFriends = 4.0;
 	// Minimum force that can induce a movement
 	private static final double minForce = 20.0;
 
@@ -676,15 +676,19 @@ class Agent {
 				"\n  splashBombs=" + splashBombs +
 				"\n  wetness=" + wetness +
 				"\n  forcesActingOn=" +
-				"\n    " + Force.DANGER_GRADIENT     + ":" + forcesActingOn[Force.DANGER_GRADIENT.type] +
-				"\n    " + Force.INTERACTION_FRIENDS + ":" + forcesActingOn[Force.INTERACTION_FRIENDS.type] +
-				"\n    " + Force.INTERACTION_FOES    + ":" + forcesActingOn[Force.INTERACTION_FOES.type] +
-				"\n    " + Force.SPLASH_BOMB_APPEAL  + ":" + forcesActingOn[Force.SPLASH_BOMB_APPEAL.type] +
-				"\n  totalForces=" + totalForces +
+				"\n  " + String.format("%1$19s",Force.DANGER_GRADIENT) +
+						":" + forcesActingOn[Force.DANGER_GRADIENT.type] +
+				"\n  " + String.format("%1$19s",Force.INTERACTION_FRIENDS) +
+						":" + forcesActingOn[Force.INTERACTION_FRIENDS.type] +
+				"\n  " + String.format("%1$19s",Force.INTERACTION_FOES) +
+						":" + forcesActingOn[Force.INTERACTION_FOES.type] +
+				"\n  " + String.format("%1$19s",Force.SPLASH_BOMB_APPEAL) +
+						":" + forcesActingOn[Force.SPLASH_BOMB_APPEAL.type] +
+				"\n          totalForces:" + totalForces +
 				(intendedPath.map(tiles -> "\n  intendedPath=" + tiles).orElse("")) +
 				(intendedMove.map(tile -> "\n  intendedMove=" + tile).orElse("")) +
-				(intendedShootingTarget.map(agent -> "\n  intendedShootingTarget="
-						+ agent.agentId).orElse("")) +
+				(intendedShootingTarget.map(agent -> "\n  intendedShootingTarget=" +
+						agent.agentId).orElse("")) +
 				(intendedSplashBomb.map(value -> "\n  intendedSplashBomb=" + value).orElse("")) +
 				(intendedMessage.map(s -> "\n  intendedMessage=" + s).orElse(""));
 	}
@@ -984,7 +988,7 @@ record Vector2D(double x, double y) {
 
 	@Override
 	public String toString() {
-		return String.format("(%1$ 8.3f, %2$ 8.3f)", x, y);
+		return String.format("(%1$ 8.3f,%2$ 8.3f)", x, y);
 	}
 
 	public static Vector2D plus(final Vector2D v1, final Vector2D v2) {
