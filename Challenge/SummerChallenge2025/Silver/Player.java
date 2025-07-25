@@ -212,7 +212,7 @@ class Brain {
 						for (int y = Math.max(y1 - ySpan, 0); y <= Math.min(y1 + ySpan, grid.getHeight() - 1); y++) {
 							final Tile t = grid.getTiles()[x][y];
 							for (Agent a : player.getMyAgents())
-								if (a.getSplashBombs() > 0 && grid.getDistances(a.getLocation(), t) == 1)
+								if (a.getSplashBombs() > 0 && grid.getDistances(a.getLocation(), t) <= 1)
 									splashBombLocationAppraisal.get(a.getAgentId() - 1).merge(t,
 											e.getValue().getTotalFoeWater(),
 											Integer::sum);
@@ -260,8 +260,7 @@ class Brain {
 					splashBombLocationAppraisal.get(a.getAgentId() - 1).entrySet().stream()
 							.map(e -> new Coordinates(
 									e.getKey().getCoordinates().x() - location.x(),
-									e.getKey().getCoordinates().y() - location.x())
-									.rescale(e.getValue()))
+									e.getKey().getCoordinates().y() - location.x()).rescale(e.getValue()))
 							.map(Coordinates::convertToVector)
 							.reduce(new Vector2D(), Vector2D::plus);
 
