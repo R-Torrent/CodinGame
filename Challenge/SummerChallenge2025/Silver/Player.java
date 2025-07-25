@@ -24,7 +24,7 @@ class Player {
 	private int gameTurn;
 
 	private static final int limitGameTurns = 100;
-	private static final boolean debug = false; // Debug messages on
+	private static final boolean debug = false; // Debug messages for the following set of agents
 	private static final Set<Integer> agentsToFollow = Set.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
 
 	public static void main(String[] args) {
@@ -426,23 +426,28 @@ class Brain {
 
 	private Tile moveFrom(final Vector2D totalForce, final Coordinates from) {
 		final double absX = Math.abs(totalForce.x()), absY = Math.abs(totalForce.y());
-		Tile destination = null, t;
+		Tile destinationX = null, destinationY = null, t;
 
-		if (absX >= absY && (totalForce.x() >= minForce && from.x() < grid.getWidth() - 1
+		if ((totalForce.x() >= minForce && from.x() < grid.getWidth() - 1
 					&& (t = grid.getTiles()[from.x() + 1][from.y()]).getType() == Tile.Type.EMPTY
 					&& Optional.ofNullable(t.getAgentPresent()).filter(Predicate.not(Agent::isMyPlayer)).isEmpty())
-				|| absX >= absY && (totalForce.x() <= -minForce && from.x() > 1
+				|| (totalForce.x() <= -minForce && from.x() > 1
 					&& (t = grid.getTiles()[from.x() - 1][from.y()]).getType() == Tile.Type.EMPTY
-					&& Optional.ofNullable(t.getAgentPresent()).filter(Predicate.not(Agent::isMyPlayer)).isEmpty())
-				|| (totalForce.y() >= minForce && from.y() < grid.getHeight() - 1
+					&& Optional.ofNullable(t.getAgentPresent()).filter(Predicate.not(Agent::isMyPlayer)).isEmpty()))
+			destinationX = t;
+		if ((totalForce.y() >= minForce && from.y() < grid.getHeight() - 1
 					&& (t = grid.getTiles()[from.x()][from.y() + 1]).getType() == Tile.Type.EMPTY
 					&& Optional.ofNullable(t.getAgentPresent()).filter(Predicate.not(Agent::isMyPlayer)).isEmpty())
 				|| (totalForce.y() <= minForce && from.y() > 1
 					&& (t = grid.getTiles()[from.x()][from.y() - 1]).getType() == Tile.Type.EMPTY)
 					&& Optional.ofNullable(t.getAgentPresent()).filter(Predicate.not(Agent::isMyPlayer)).isEmpty())
-			destination = t;
+			destinationY = t;
+		if (absX >= absY)
+			t = destinationX != null ? destinationX : destinationY;
+		else
+			t = destinationY != null ? destinationY : destinationX;
 
-		return destination;
+		return t;
 	}
 
 	private void displayMessage(final Agent a, final int n) {
@@ -696,7 +701,7 @@ class Agent {
 						":" + forcesActingOn[Force.INTERACTION_FOES.type] +
 				"\n  " + String.format("%1$19s",Force.SPLASH_BOMB_APPEAL) +
 						":" + forcesActingOn[Force.SPLASH_BOMB_APPEAL.type] +
-				"\n          totalForces:" + totalForces +
+				"\n  totalForces=        " + totalForces +
 				(intendedPath.map(tiles -> "\n  intendedPath=" + tiles).orElse("")) +
 				(intendedMove.map(tile -> "\n  intendedMove=" + tile).orElse("")) +
 				(intendedShootingTarget.map(agent -> "\n  intendedShootingTarget=" +
