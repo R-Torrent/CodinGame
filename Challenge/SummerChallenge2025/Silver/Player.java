@@ -25,6 +25,7 @@ class Player {
 
 	private static final int limitGameTurns = 100;
 	private static final boolean debug = false; // Debug messages on
+	private static final Set<Integer> agentsToFollow = Set.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
 
 	public static void main(String[] args) {
 		Player player = new Player();
@@ -80,7 +81,9 @@ class Player {
 			overmind.think();
 
 			if (debug)
-				myAgents.forEach(System.err::println);
+				myAgents.stream()
+						.filter(a -> agentsToFollow.contains(a.getAgentId()))
+						.forEach(System.err::println);
 
 			overmind.issueCommands().forEach(System.out::println);
 
@@ -166,11 +169,11 @@ class Brain {
 	// Constant of repulsion between friends
 	private static final double k2 = 100.0;
 	// Inverse Power by which repulsion between friends falls
-	private static final double invFriends = 4.0;
+	private static final double invFriends = 3.0;
 	// Constant of appeal to SplashBomb runs
-	private static final double splashBombAppealMultiplier = 2.0;
+	private static final double splashBombAppealMultiplier = 2.5;
 	// Minimum force that can induce a movement
-	private static final double minForce = 20.0;
+	private static final double minForce = 25.0;
 
 	final private static String[] messages = new String[] {
 			"For 42 Barcelona!",
@@ -259,11 +262,11 @@ class Brain {
 
 			// SplashBomb appeal
 			Vector2D splashBombAppeal = splashBombLocationAppraisal.get(a.getAgentId() - 1).entrySet().stream()
-				.map(e -> new Coordinates(
-						e.getKey().getCoordinates().x() - location.x(),
-						e.getKey().getCoordinates().y() - location.y()).rescale(e.getValue()))
-				.map(Coordinates::convertToVector)
-				.reduce(new Vector2D(), Vector2D::plus);
+					.map(e -> new Coordinates(
+							e.getKey().getCoordinates().x() - location.x(),
+							e.getKey().getCoordinates().y() - location.y()).rescale(e.getValue()))
+					.map(Coordinates::convertToVector)
+					.reduce(new Vector2D(), Vector2D::plus);
 			final int maxSplash = splashBombLocationAppraisal.get(a.getAgentId() - 1).values().stream()
 					.mapToInt(i -> i)
 					.max().orElse(0);
