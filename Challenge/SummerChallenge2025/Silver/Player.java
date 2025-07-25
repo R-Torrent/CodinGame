@@ -203,7 +203,7 @@ class Brain {
 
 		// SplashBomb evaluations
 		for (Agent a : player.getMyAgents())
-			splashBombLocationAppraisal.put(a.getAgentId() - 1, new HashMap<>(grid.getTotalTiles()));
+			splashBombLocationAppraisal.put(a.getAgentId() - 1, new HashMap<>(5));
 		SplashBomb.determineAllSplashBombs(grid);
 		SplashBomb.gridBombing.entrySet().stream()
 				.filter(e -> e.getValue().getTotalFriendlyWater() == 0)
@@ -258,14 +258,21 @@ class Brain {
 			}
 
 			// SplashBomb appeal
-			final Vector2D splashBombAppeal = Vector2D.multiplyByConst(
-					splashBombLocationAppraisal.get(a.getAgentId() - 1).entrySet().stream()
-							.map(e -> new Coordinates(
-									e.getKey().getCoordinates().x() - location.x(),
-									e.getKey().getCoordinates().y() - location.y()).rescale(e.getValue()))
-							.map(Coordinates::convertToVector)
-							.reduce(new Vector2D(), Vector2D::plus),
-					splashBombAppealMultiplier);
+			Vector2D splashBombAppeal = splashBombLocationAppraisal.get(a.getAgentId() - 1).entrySet().stream()
+				.map(e -> new Coordinates(
+						e.getKey().getCoordinates().x() - location.x(),
+						e.getKey().getCoordinates().y() - location.y()).rescale(e.getValue()))
+				.map(Coordinates::convertToVector)
+				.reduce(new Vector2D(), Vector2D::plus);
+			final int maxSplash = splashBombLocationAppraisal.get(a.getAgentId() - 1).values().stream()
+					.mapToInt(i -> i)
+					.max().orElse(0);
+			final int sumSplashes =splashBombLocationAppraisal.get(a.getAgentId() - 1).values().stream()
+					.mapToInt(i -> i)
+					.sum();
+			if (sumSplashes > 0)
+				splashBombAppeal = Vector2D.multiplyByConst(splashBombAppeal,
+						splashBombAppealMultiplier * maxSplash / sumSplashes);
 
 			a.getForcesActingOn()[Force.DANGER_GRADIENT.type] = gradient;
 			a.getForcesActingOn()[Force.INTERACTION_FOES.type] = foes;
