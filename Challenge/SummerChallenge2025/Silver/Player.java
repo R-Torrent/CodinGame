@@ -162,11 +162,13 @@ class Brain {
 	private Set<Agent> otherAgents;
 
 	// Initial deployment turns
-	public static final int initialDeployment = 5;
+	public static final int initialDeployment = 3;
 	// Aversion to danger (AKA constant of proportionality with the gradient of the totalFoeShootingPotential)
 	private static final double k0 = 2.5;
-	// Constant of attraction to foes
-	private static final double k1 = 500.0;
+	// Constant of attraction to foes, per difference in wetness
+	private static final double k1 = 25.0;
+	// Threshold of wetness difference where foes become attractive
+	private static final int indifferenceToWetness = 20;
 	// Inverse Power by which attraction to foes falls
 	private static final double invFoes = 1.0;
 	// Constant of repulsion between friends
@@ -245,13 +247,13 @@ class Brain {
 
 			// Attraction to foes; set up to the optimal range
 			final Vector2D foes = player.getGameTurn() > initialDeployment
-					? attractionToFoes(player.getOtherAgents(), xa, location, a.getOptimalRange())
+					? attractionToFoes(player.getOtherAgents(), xa, location, a.getOptimalRange(), a.getWetness())
 					: player.getOtherAgents().stream()
 							.min(((f1, f2) ->
 									grid.getDistances(location, f1.getLocation())
 											- grid.getDistances(location, f2.getLocation())))
 							.map(List::of)
-							.map(l -> attractionToFoes(l, xa, location, 0))
+							.map(l -> attractionToFoes(l, xa, location, 0, 0))
 							.orElse(new Vector2D());
 
 			// Repulsion from close friends
@@ -386,13 +388,14 @@ class Brain {
 	}
 
 	private Vector2D attractionToFoes(final List<Agent> listFoes, final Vector2D xa, final Tile location,
-									  final int optimalRange) {
+									  final int optimalRange, final int wetness) {
 		Vector2D combinedAttraction = new Vector2D();
 		for (Agent f : listFoes) {
 			final Vector2D xf = f.getVector();
 			final Vector2D xfa = Vector2D.minus(xf, xa);
 			final double x = Vector2D.distance(xf, xa);
-			final double attractionForce = k1 * (x - optimalRange) / x * Math.pow(x, -invFoes);
+			final double attractionForce = k1 * (Math.max(f.getWetness() - wetness, indifferenceToWetness))
+					* (x - optimalRange) / x * Math.pow(x, -invFoes);
 			final List<Tile> attractionPath = grid.getPath(location, f.getLocation());
 			Vector2D attractionVector = new Vector2D();
 			if (attractionForce <= 0 || attractionPath.size() <= 1)
