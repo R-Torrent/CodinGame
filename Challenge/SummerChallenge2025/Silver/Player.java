@@ -52,7 +52,7 @@ class Player {
 			agents[agentId - 1] = new Agent(myId, agentId,
 					in.nextInt(),  // Player id of this agent
 					in.nextInt(),  // Number of turns between each of this agent's shots
-					in.nextInt(),  // Maximum manhattan distance for greatest damage output
+					in.nextInt(),  // Maximum Manhattan distance for greatest damage output
 					in.nextInt(),  // Damage output within optimal conditions
 					in.nextInt()); // Number of splash bombs this agent can throw this game
 		}
@@ -164,21 +164,21 @@ class Brain {
 	// Initial deployment turns
 	public static final int initialDeployment = 3;
 	// Aversion to danger (AKA constant of proportionality with the gradient of the totalFoeShootingPotential)
-	private static final double k0 = 2.5;
+	private static final double k0 = 15.0;
 	// Constant of attraction to foes, per difference in wetness
 	private static final double k1 = 25.0;
 	// Threshold of wetness difference where foes become attractive
 	private static final int indifferenceToWetness = 20;
 	// Inverse Power by which attraction to foes falls
-	private static final double invFoes = 1.0;
+	private static final double invFoes = 0.75;
 	// Constant of repulsion between friends
 	private static final double k2 = 100.0;
 	// Inverse Power by which repulsion between friends falls
-	private static final double invFriends = 3.0;
+	private static final double invFriends = 2.5;
 	// Constant of appeal to SplashBomb runs
 	private static final double splashBombAppealMultiplier = 2.5;
 	// Minimum force that can induce a movement
-	private static final double minForce = 20.0;
+	private static final double minForce = 15.0;
 
 	final private static String[] messages = new String[] {
 			"For 42 Barcelona!",
@@ -395,7 +395,7 @@ class Brain {
 			final Vector2D xfa = Vector2D.minus(xf, xa);
 			final double x = Vector2D.distance(xf, xa);
 			final double attractionForce = k1 * (Math.max(f.getWetness() - wetness, indifferenceToWetness))
-					* (x - optimalRange) / x * Math.pow(x, -invFoes);
+					* (x - optimalRange + 0.5) * Math.pow(x, -1 -invFoes);
 			final List<Tile> attractionPath = grid.getPath(location, f.getLocation());
 			Vector2D attractionVector = new Vector2D();
 			if (attractionForce <= 0 || attractionPath.size() <= 1)
@@ -456,7 +456,7 @@ class Brain {
 			return array[1] - array[0];         // Backward difference
 		if (array[2] != -1)
 			return array[2] - array[1];         // Forward difference
-		return -0.0;
+		return 0.0;
 	}
 
 	private Tile moveFrom(final Vector2D totalForce, final Coordinates from) {
@@ -890,9 +890,12 @@ class Grid {
 					previous[t.getIndex()][t1.getIndex()] = t;
 				}
 			}
-		for (int k = 0; k < totalTiles; k++)
-			for (int i = 0; i < totalTiles; i++)
-				for (int j = 0; j < totalTiles; j++) {
+		// Iteration contrary to the customary because of the way indices are constructed. With the more typical loops,
+		// paths would be constructed following a "vertical first" approach, while it is in our interest to move
+		// "horizontally first" when the game starts.
+		for (int k = totalTiles - 1; k >= 0; k--)
+			for (int i = totalTiles - 1; i >= 0; i--)
+				for (int j = totalTiles - 1; j >= 0; j--) {
 					if (distances[i][k] == Integer.MAX_VALUE || distances[k][j] == Integer.MAX_VALUE)
 						continue;
 					final int d = distances[i][k] + distances[k][j];
