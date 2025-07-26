@@ -466,14 +466,14 @@ class Brain {
 		if ((totalForce.x() >= minForce && from.x() < grid.getWidth() - 1
 					&& (t = grid.getTiles()[from.x() + 1][from.y()]).getType() == Tile.Type.EMPTY
 					&& Optional.ofNullable(t.getAgentPresent()).filter(Predicate.not(Agent::isMyPlayer)).isEmpty())
-				|| (totalForce.x() <= -minForce && from.x() > 1
+				|| (totalForce.x() <= -minForce && from.x() > 0
 					&& (t = grid.getTiles()[from.x() - 1][from.y()]).getType() == Tile.Type.EMPTY
 					&& Optional.ofNullable(t.getAgentPresent()).filter(Predicate.not(Agent::isMyPlayer)).isEmpty()))
 			destinationX = t;
 		if ((totalForce.y() >= minForce && from.y() < grid.getHeight() - 1
 					&& (t = grid.getTiles()[from.x()][from.y() + 1]).getType() == Tile.Type.EMPTY
 					&& Optional.ofNullable(t.getAgentPresent()).filter(Predicate.not(Agent::isMyPlayer)).isEmpty())
-				|| (totalForce.y() <= -minForce && from.y() > 1
+				|| (totalForce.y() <= -minForce && from.y() > 0
 					&& (t = grid.getTiles()[from.x()][from.y() - 1]).getType() == Tile.Type.EMPTY)
 					&& Optional.ofNullable(t.getAgentPresent()).filter(Predicate.not(Agent::isMyPlayer)).isEmpty())
 			destinationY = t;
