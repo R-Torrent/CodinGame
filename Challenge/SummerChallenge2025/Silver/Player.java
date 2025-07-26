@@ -158,12 +158,12 @@ class Brain {
 	private final Map<Integer, Map<Tile, Integer>> splashBombLocationAppraisal;
 	private Set<Agent> otherAgents;
 
+	// Initial deployment turns
+	private static final int initialDeployment = 5;
 	// Aversion to danger (AKA constant of proportionality with the gradient of the totalFoeShootingPotential)
 	private static final double k0 = 10.0;
-	// Constant of attraction to foes, per difference in wetness
-	private static final double k1 = 10.0;
-	// Skew to the wetness difference
-	private static final double skew = 20.0;
+	// Constant of attraction to foes
+	private static final double k1 = 500.0;
 	// Inverse Power by which attraction to foes falls
 	private static final double invFoes = 1.0;
 	// Constant of repulsion between friends
@@ -173,7 +173,7 @@ class Brain {
 	// Constant of appeal to SplashBomb runs
 	private static final double splashBombAppealMultiplier = 2.5;
 	// Minimum force that can induce a movement
-	private static final double minForce = 25.0;
+	private static final double minForce = 20.0;
 
 	final private static String[] messages = new String[] {
 			"For 42 Barcelona!",
@@ -227,27 +227,29 @@ class Brain {
 
 		// Acting forces
 		for (Agent a : player.getMyAgents()) {
-			final Coordinates location = a.getLocation().getCoordinates();
+			final Tile location = a.getLocation();
+			final Coordinates coordinates = location.getCoordinates();
 			final Vector2D xa = a.getVector();
 
 			// Gradient to the totalFoeShootingPotential
 			// Arrays of the three values centered around the agent's location [0]:{i-1} [1]:{i} [2]:{i+1}
 			// -1: Indicates absence of a value (== border or obstacle)
-			final int[] valuesX = extractValues(0, totalFoeShootingPotential, a.getLocation().getCoordinates());
-			final int[] valuesY = extractValues(1, totalFoeShootingPotential, a.getLocation().getCoordinates());
+			final int[] valuesX = extractValues(0, totalFoeShootingPotential, coordinates);
+			final int[] valuesY = extractValues(1, totalFoeShootingPotential, coordinates);
 
 			final Vector2D gradient = Vector2D.multiplyByConst(
 					new Vector2D(calculateFiniteDifferences(valuesX), calculateFiniteDifferences(valuesY)), -k0);
 
-			// Attraction to foes
-			Vector2D foes = new Vector2D();
-			for (Agent f : player.getOtherAgents()) {
-				Vector2D xf = f.getVector();
-				Vector2D xfa = Vector2D.minus(xf, xa);
-				foes = Vector2D.plus(foes, Vector2D.multiplyByConst(xfa, k1
-						* (skew + f.getWetness() - a.getWetness())
-						* Math.pow(Vector2D.distance(xf, xa), -1 - invFoes)));
-			}
+			// Attraction to foes; set up to the optimal range
+			final Vector2D foes = player.getGameTurn() <= initialDeployment
+					? player.getOtherAgents().stream()
+							.min(((f1, f2) ->
+									grid.getDistances(location, f1.getLocation())
+											- grid.getDistances(location, f2.getLocation())))
+							.map(List::of)
+							.map(l -> attractionToFoes(l, xa, location, 0))
+							.orElse(new Vector2D())
+					: attractionToFoes(player.getOtherAgents(), xa, location, a.getOptimalRange());
 
 			// Repulsion from close friends
 			Vector2D friends = new Vector2D();
@@ -263,8 +265,8 @@ class Brain {
 			// SplashBomb appeal
 			Vector2D splashBombAppeal = splashBombLocationAppraisal.get(a.getAgentId() - 1).entrySet().stream()
 					.map(e -> new Coordinates(
-							e.getKey().getCoordinates().x() - location.x(),
-							e.getKey().getCoordinates().y() - location.y()).rescale(e.getValue()))
+							e.getKey().getCoordinates().x() - coordinates.x(),
+							e.getKey().getCoordinates().y() - coordinates.y()).rescale(e.getValue()))
 					.map(Coordinates::convertToVector)
 					.reduce(new Vector2D(), Vector2D::plus);
 			final int maxSplash = splashBombLocationAppraisal.get(a.getAgentId() - 1).values().stream()
@@ -285,8 +287,8 @@ class Brain {
 			// Attempt to move
 			final Vector2D totalForce = Arrays.stream(a.getForcesActingOn()).reduce(new Vector2D(), Vector2D::plus);
 			a.setTotalForce(totalForce);
-			a.setIntendedPath(Optional.ofNullable(moveFrom(totalForce, location))
-					.map(destination -> grid.getPath(a.getLocation(), destination)));
+			a.setIntendedPath(Optional.ofNullable(moveFrom(totalForce, coordinates))
+					.map(destination -> grid.getPath(location, destination)));
 		}
 
 		// Target selection
@@ -377,6 +379,32 @@ class Brain {
 				}
 			});
 		}
+	}
+
+	private Vector2D attractionToFoes(final List<Agent> listFoes, final Vector2D xa, final Tile location,
+									  final int optimalRange) {
+		Vector2D combinedAttraction = new Vector2D();
+		for (Agent f : listFoes) {
+			final Vector2D xf = f.getVector();
+			final Vector2D xfa = Vector2D.minus(xf, xa);
+			final double x = Vector2D.distance(xf, xa);
+			final double attractionForce = k1 * (x - optimalRange) / x * Math.pow(x, -invFoes);
+			final List<Tile> attractionPath = grid.getPath(location, f.getLocation());
+			Vector2D attractionVector = new Vector2D();
+			if (attractionForce <= 0 || attractionPath.size() <= 1)
+				attractionVector = Vector2D.multiplyByConst(xfa, attractionForce / x);
+			else
+				for (Tile.Neighbor n : Tile.Neighbor.values())
+					if (Optional.ofNullable(location.getNeighbors()[n.which]).orElse(new Tile())
+							.equals(attractionPath.get(1))) {
+						attractionVector =
+								Vector2D.multiplyByConst(n.moveTo.convertToVector(), attractionForce);
+						break;
+					}
+			combinedAttraction = Vector2D.plus(combinedAttraction, attractionVector);
+		}
+
+		return combinedAttraction;
 	}
 
 	private void presumedWetnessHit(final Agent presumedVictim, final int damage) {
@@ -921,15 +949,27 @@ class Tile {
 
 	public enum Neighbor {
 
-		LEFT(0),
-		RIGHT(1),
-		TOP(2),
-		BOTTOM(3);
+		LEFT  (0, new Coordinates(-1, 0)),
+		RIGHT (1, new Coordinates(+1, 0)),
+		TOP   (2, new Coordinates(0, -1)),
+		BOTTOM(3, new Coordinates(0, +1));
 
 		public final int which;
+		final Coordinates moveTo;
 
-		Neighbor(final int which) { this.which = which; }
+		Neighbor(final int which, Coordinates moveTo) {
+			this.which = which;
+			this.moveTo = moveTo;
+		}
 
+	}
+
+	// Default "error" Tile
+	public Tile() {
+		coordinates = new Coordinates(-1, -1);
+		type = Type.EMPTY;
+		index = -1;
+		neighbors = null;
 	}
 
 	public Tile(final int x, final int y, final int type) {
@@ -948,6 +988,8 @@ class Tile {
 	public Type getType() { return type; }
 
 	public int getIndex() { return index; }
+
+	public Tile[] getNeighbors() { return neighbors; }
 
 	public Agent getAgentPresent() { return agentPresent; }
 
