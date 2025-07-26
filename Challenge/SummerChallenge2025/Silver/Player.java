@@ -438,7 +438,7 @@ class Brain {
 		if ((totalForce.y() >= minForce && from.y() < grid.getHeight() - 1
 					&& (t = grid.getTiles()[from.x()][from.y() + 1]).getType() == Tile.Type.EMPTY
 					&& Optional.ofNullable(t.getAgentPresent()).filter(Predicate.not(Agent::isMyPlayer)).isEmpty())
-				|| (totalForce.y() <= minForce && from.y() > 1
+				|| (totalForce.y() <= -minForce && from.y() > 1
 					&& (t = grid.getTiles()[from.x()][from.y() - 1]).getType() == Tile.Type.EMPTY)
 					&& Optional.ofNullable(t.getAgentPresent()).filter(Predicate.not(Agent::isMyPlayer)).isEmpty())
 			destinationY = t;
