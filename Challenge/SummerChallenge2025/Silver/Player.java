@@ -391,12 +391,12 @@ class Brain {
 									  final int optimalRange, final int wetness) {
 		Vector2D combinedAttraction = new Vector2D();
 		for (Agent f : listFoes) {
-			final Vector2D xf = f.getVector();
-			final Vector2D xfa = Vector2D.minus(xf, xa);
-			final double x = Vector2D.distance(xf, xa);
+			final Tile foeLocation = f.getLocation();
+			final Vector2D xfa = Vector2D.minus(f.getVector(), xa);
+			final double x = location.getCoordinates().distanceTo(foeLocation.getCoordinates());
 			final double attractionForce = k1 * (Math.max(f.getWetness() - wetness, indifferenceToWetness))
 					* (x - optimalRange + 0.5) * Math.pow(x, -1 -invFoes);
-			final List<Tile> attractionPath = grid.getPath(location, f.getLocation());
+			final List<Tile> attractionPath = grid.getPath(location, foeLocation);
 			Vector2D attractionVector = new Vector2D();
 			if (attractionForce <= 0 || attractionPath.size() <= 1)
 				attractionVector = Vector2D.multiplyByConst(xfa, attractionForce / x);
