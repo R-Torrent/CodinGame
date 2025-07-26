@@ -80,10 +80,13 @@ class Player {
 
 			overmind.think();
 
-			if (debug)
+			if (debug) {
+				if (gameTurn <= Brain.initialDeployment)
+					System.err.println("** Initial Deployment **");
 				myAgents.stream()
 						.filter(a -> agentsToFollow.contains(a.getAgentId()))
 						.forEach(System.err::println);
+			}
 
 			overmind.issueCommands().forEach(System.out::println);
 
@@ -159,9 +162,9 @@ class Brain {
 	private Set<Agent> otherAgents;
 
 	// Initial deployment turns
-	private static final int initialDeployment = 5;
+	public static final int initialDeployment = 5;
 	// Aversion to danger (AKA constant of proportionality with the gradient of the totalFoeShootingPotential)
-	private static final double k0 = 10.0;
+	private static final double k0 = 2.5;
 	// Constant of attraction to foes
 	private static final double k1 = 500.0;
 	// Inverse Power by which attraction to foes falls
@@ -241,26 +244,27 @@ class Brain {
 					new Vector2D(calculateFiniteDifferences(valuesX), calculateFiniteDifferences(valuesY)), -k0);
 
 			// Attraction to foes; set up to the optimal range
-			final Vector2D foes = player.getGameTurn() <= initialDeployment
-					? player.getOtherAgents().stream()
+			final Vector2D foes = player.getGameTurn() > initialDeployment
+					? attractionToFoes(player.getOtherAgents(), xa, location, a.getOptimalRange())
+					: player.getOtherAgents().stream()
 							.min(((f1, f2) ->
 									grid.getDistances(location, f1.getLocation())
 											- grid.getDistances(location, f2.getLocation())))
 							.map(List::of)
 							.map(l -> attractionToFoes(l, xa, location, 0))
-							.orElse(new Vector2D())
-					: attractionToFoes(player.getOtherAgents(), xa, location, a.getOptimalRange());
+							.orElse(new Vector2D());
 
 			// Repulsion from close friends
 			Vector2D friends = new Vector2D();
-			for (Agent f : player.getMyAgents()) {
-				if (f.equals(a))
-					continue;
-				Vector2D xf = f.getVector();
-				Vector2D xfa = Vector2D.minus(xf, xa);
-				friends = Vector2D.plus(friends, Vector2D.multiplyByConst(xfa, -k2
-						* Math.pow(Vector2D.distance(xf, xa), -1 - invFriends)));
-			}
+			if (player.getGameTurn() > initialDeployment)
+				for (Agent f : player.getMyAgents()) {
+					if (f.equals(a))
+						continue;
+					Vector2D xf = f.getVector();
+					Vector2D xfa = Vector2D.minus(xf, xa);
+					friends = Vector2D.plus(friends, Vector2D.multiplyByConst(xfa, -k2
+							* Math.pow(Vector2D.distance(xf, xa), -1 - invFriends)));
+				}
 
 			// SplashBomb appeal
 			Vector2D splashBombAppeal = splashBombLocationAppraisal.get(a.getAgentId() - 1).entrySet().stream()
