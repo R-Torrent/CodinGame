@@ -164,6 +164,7 @@ class Brain {
 	private final int initialDeployment;
 	private final Map<Integer, Map<Tile, Integer>> splashBombLocationAppraisal;
 	private final Comparator<Map.Entry<Agent, Integer>> shootingPriorities;
+	private final Comparator<Map.Entry<Tile, Integer>> bombingPriorities;
 	private Set<Agent> otherAgents;
 
 	// Aversion to danger (AKA constant of proportionality with the gradient of the totalFoeShootingPotential)
@@ -200,26 +201,37 @@ class Brain {
 		splashBombLocationAppraisal = new HashMap<>(player.getAgents().length);
 
 		// Shooting priority criteria
-		final Comparator<Map.Entry<Agent, Integer>> primary =	(e1, e2) -> {
-			final Agent f1 = e1.getKey(), f2 = e2.getKey();
+		shootingPriorities = ((Comparator<Map.Entry<Agent, Integer>>) (e1, e2) -> {
+            final Agent f1 = e1.getKey(), f2 = e2.getKey();
 
-			// Shoot to kill first...
-			if (f1.getWetness() + e1.getValue() < Agent.deathWetness
-					&& f2.getWetness() + e2.getValue() >= Agent.deathWetness)
-				return -1;
-			if (f1.getWetness() + e1.getValue() >= Agent.deathWetness
-					&& f2.getWetness() + e2.getValue() < Agent.deathWetness)
-				return 1;
-			if (f1.getWetness() + e1.getValue() >= Agent.deathWetness
-					&& f2.getWetness() + e2.getValue() >= Agent.deathWetness)
-				return ((f2.getWetness() + e2.getValue()) - (f1.getWetness() + e1.getValue()));
+            // Shoot to kill first...
+            if (f1.getWetness() + e1.getValue() < Agent.deathWetness
+                    && f2.getWetness() + e2.getValue() >= Agent.deathWetness)
+                return -1;
+            if (f1.getWetness() + e1.getValue() >= Agent.deathWetness
+                    && f2.getWetness() + e2.getValue() < Agent.deathWetness)
+                return 1;
+            if (f1.getWetness() + e1.getValue() >= Agent.deathWetness
+                    && f2.getWetness() + e2.getValue() >= Agent.deathWetness)
+                return ((f2.getWetness() + e2.getValue()) - (f1.getWetness() + e1.getValue()));
 
-			// ...but most shots are for maximizing damage
-			return e1.getValue() - e2.getValue();
-		};
-		shootingPriorities = primary
+            // ...but most shots are for maximizing damage
+            return e1.getValue() - e2.getValue();
+        })
+				// Concentrate water on the weakened
 				.thenComparing(Map.Entry::getKey, Comparator.comparingInt(Agent::getWetness))
+				// Damage dealers are a priority for the end-game
 				.thenComparing(Map.Entry::getKey, Comparator.comparingDouble(Agent::getDamagePerTurn));
+
+		// SplashBomb priority criteria. Go for the juicy hits first
+		bombingPriorities = Comparator.comparingInt((Map.Entry<Tile, Integer> e) -> e.getValue())
+				// Direct hits are preferable
+				.thenComparing(Map.Entry::getKey,
+						Comparator.comparingInt(t -> SplashBomb.gridBombing.get(t).landsOnHead()))
+				// Get the damage dealers
+				.thenComparing(Map.Entry::getKey,
+						Comparator.comparingDouble(t -> SplashBomb.gridBombing.get(t).getAgentsHit().stream().
+								mapToDouble(Agent::getDamagePerTurn).sum()));
 	}
 
 	public int getInitialDeployment() { return initialDeployment; }
@@ -365,14 +377,7 @@ class Brain {
 			}
 			final Optional<Map.Entry<Tile, Integer>> intendedSplashBomb = splashBombTotalDamage.entrySet().stream()
 					.filter(e -> e.getValue() > 0)
-					.max((e1, e2) -> {
-						// Prioritize damage...
-						if (!e1.getValue().equals(e2.getValue()))
-							return e1.getValue() - e2.getValue();
-						// ...but direct hits are preferable
-						return SplashBomb.gridBombing.get(e1.getKey()).landsOnHead()
-								- SplashBomb.gridBombing.get(e2.getKey()).landsOnHead();
-					});
+					.max(bombingPriorities);
 
 			// To shoot or to bomb, that is the question...
 			intendedSplashBomb.filter(isb ->
