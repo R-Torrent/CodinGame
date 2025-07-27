@@ -366,30 +366,32 @@ class Brain {
 								- SplashBomb.gridBombing.get(e2.getKey()).landsOnHead();
 					});
 
-			intendedShootingTarget.ifPresent(e -> {
-				if (intendedSplashBomb.isEmpty() || intendedSplashBomb.get().getValue() <= e.getValue()) {
-					a.setIntendedShootingTarget(Optional.of(e.getKey()));
-					presumedWetnessHit(e.getKey(), e.getValue());
-					switch ((a.getAgentId() + player.getGameTurn()) % 40) {
-						case 10: displayMessage(a, 0); break;
-						case 20: displayMessage(a, 1); break;
-						case 30: displayMessage(a, 2); break;
-						default:
-					}
-				}
-			});
-			intendedSplashBomb.ifPresent(e -> {
-				if (intendedShootingTarget.isEmpty() || intendedShootingTarget.get().getValue() < e.getValue()) {
-					a.setIntendedSplashBomb(Optional.of(e.getKey()));
-					SplashBomb.gridBombing.get(e.getKey()).getAgentsHit()
-							.forEach(victim -> presumedWetnessHit(victim, SplashBomb.bombWetness));
-					switch ((a.getAgentId() + player.getGameTurn()) % 20) {
-						case  7: displayMessage(a, 3); break;
-						case 17: displayMessage(a, 4); break;
-						default:
-					}
-				}
-			});
+			// To shoot or to bomb, that is the question...
+			intendedSplashBomb.filter(isb ->
+					isb.getValue() > SplashBomb.bombWetness
+							|| SplashBomb.gridBombing.get(isb.getKey()).landsOnHead() == 1
+							|| SplashBomb.gridBombing.get(isb.getKey()).getAgentsHit().stream()
+									.anyMatch(f ->
+											presumedCoordinates.distanceTo(f.getLocation().getCoordinates()) <= 4))
+					.ifPresentOrElse(e -> {
+							a.setIntendedSplashBomb(Optional.of(e.getKey()));
+							SplashBomb.gridBombing.get(e.getKey()).getAgentsHit()
+									.forEach(victim -> presumedWetnessHit(victim, SplashBomb.bombWetness));
+							switch ((a.getAgentId() + player.getGameTurn()) % 20) {
+								case  7: displayMessage(a, 3); break;
+								case 17: displayMessage(a, 4); break;
+								default:
+							}},
+							() -> intendedShootingTarget.ifPresent(ist -> {
+								a.setIntendedShootingTarget(Optional.of(ist.getKey()));
+								presumedWetnessHit(ist.getKey(), ist.getValue());
+								switch ((a.getAgentId() + player.getGameTurn()) % 40) {
+									case 10: displayMessage(a, 0); break;
+									case 20: displayMessage(a, 1); break;
+									case 30: displayMessage(a, 2); break;
+									default:
+								}
+							}));
 		}
 	}
 
