@@ -228,7 +228,11 @@ class Brain {
 				// Direct hits are preferable
 				.thenComparing(Map.Entry::getKey,
 						Comparator.comparingInt(t -> SplashBomb.gridBombing.get(t).landsOnHead()))
-				// Get the damage dealers
+				// Finish off the weak
+				.thenComparing(Map.Entry::getKey,
+						Comparator.comparingInt(t -> SplashBomb.gridBombing.get(t).getAgentsHit().stream().
+								mapToInt(Agent::getWetness).sum()))
+				// Get the damage dealers when in doubt
 				.thenComparing(Map.Entry::getKey,
 						Comparator.comparingDouble(t -> SplashBomb.gridBombing.get(t).getAgentsHit().stream().
 								mapToDouble(Agent::getDamagePerTurn).sum()));
