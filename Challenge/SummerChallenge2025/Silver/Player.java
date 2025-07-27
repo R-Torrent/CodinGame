@@ -166,7 +166,7 @@ class Brain {
 	// Aversion to danger (AKA constant of proportionality with the gradient of the totalFoeShootingPotential)
 	private static final double k0 = 15.0;
 	// Constant of attraction to foes, per difference in wetness
-	private static final double k1 = 25.0;
+	private static final double k1 = 13.0;
 	// Threshold of wetness difference where foes become attractive
 	private static final int indifferenceToWetness = 20;
 	// Inverse Power by which attraction to foes falls
@@ -766,8 +766,8 @@ class Grid {
 	private final int totalTiles;
 	private final Tile[][] tiles;
 	private final Map<Coordinates, Tile.Type[][]> coverAreaMap;
-	private final int[][] distances;
-	private final Tile[][] previous;
+	private final int[][][] distances;
+	private final Tile[][][] previous;
 
 	public Grid(final int width, final int height) {
 		this.width = width;
@@ -775,8 +775,8 @@ class Grid {
 		totalTiles = width * height;
 		tiles = new Tile[width][height];
 		coverAreaMap = new HashMap<>(totalTiles);
-		distances = new int[totalTiles][totalTiles];
-		previous = new Tile[totalTiles][totalTiles];
+		distances = new int[2][totalTiles][totalTiles];
+		previous = new Tile[2][totalTiles][totalTiles];
 	}
 
 	public void initTile(final int x, final int y, final int tileType) {
@@ -854,69 +854,87 @@ class Grid {
 
 	// Floyd-Warshall pathing algorithm
 	// https://en.wikipedia.org/wiki/Floyd%E2%80%93Warshall_algorithm
+	// Two iterations of the same algorithm, with opposite advancement of the indices, for the purpose of obtaining
+	// paths that favor the "move horizontally" or "move vertically" first
 	public void determinePathing() {
 		for (int i = 0; i < totalTiles; i++)
 			for (int j = 0; j < totalTiles; j++) {
 				if (i == j)
 					continue;
-				distances[i][j] = Integer.MAX_VALUE;
+				distances[0][i][j] = distances[1][i][j] = Integer.MAX_VALUE;
 			}
 
 		for (int x = 0; x < width; x++)
 			for (int y = 0; y < height; y++) {
 				final Tile t = tiles[x][y];
-				previous[t.getIndex()][t.getIndex()] = t;
+				previous[0][t.getIndex()][t.getIndex()] = previous[1][t.getIndex()][t.getIndex()]= t;
 				if (t.getType() != Tile.Type.EMPTY)
 					continue;
 				Tile t1;
 				if (x > 0 && (t1 = tiles[x - 1][y]).getType() == Tile.Type.EMPTY) {
 					t.setNeighbor(Tile.Neighbor.LEFT, t1);
-					distances[t.getIndex()][t1.getIndex()] = 1;
-					previous[t.getIndex()][t1.getIndex()] = t;
+					setEdge(t, t1);
 				}
 				if (x < width - 1 && (t1 = tiles[x + 1][y]).getType() == Tile.Type.EMPTY) {
 					t.setNeighbor(Tile.Neighbor.RIGHT, t1);
-					distances[t.getIndex()][t1.getIndex()] = 1;
-					previous[t.getIndex()][t1.getIndex()] = t;
+					setEdge(t, t1);
 				}
 				if (y > 0 && (t1 = tiles[x][y - 1]).getType() == Tile.Type.EMPTY) {
 					t.setNeighbor(Tile.Neighbor.TOP, t1);
-					distances[t.getIndex()][t1.getIndex()] = 1;
-					previous[t.getIndex()][t1.getIndex()] = t;
+					setEdge(t, t1);
 				}
 				if (y < height - 1 && (t1 = tiles[x][y + 1]).getType() == Tile.Type.EMPTY) {
 					t.setNeighbor(Tile.Neighbor.BOTTOM, t1);
-					distances[t.getIndex()][t1.getIndex()] = 1;
-					previous[t.getIndex()][t1.getIndex()] = t;
+					setEdge(t, t1);
 				}
 			}
-		// Iteration contrary to the customary because of the way indices are constructed. With the more typical loops,
-		// paths would be constructed following a "vertical first" approach, while it is in our interest to move
-		// "horizontally first" when the game starts.
+
+		for (int k = 0; k < totalTiles; k++)
+			for (int i = 0; i < totalTiles; i++)
+				for (int j = 0; j < totalTiles; j++) {
+					if (distances[0][i][k] == Integer.MAX_VALUE || distances[0][k][j] == Integer.MAX_VALUE)
+						continue;
+					final int d = distances[0][i][k] + distances[0][k][j];
+					if (distances[0][i][j] > d) {
+						distances[0][i][j] = d;
+						previous[0][i][j] = previous[0][k][j];
+					}
+				}
 		for (int k = totalTiles - 1; k >= 0; k--)
 			for (int i = totalTiles - 1; i >= 0; i--)
 				for (int j = totalTiles - 1; j >= 0; j--) {
-					if (distances[i][k] == Integer.MAX_VALUE || distances[k][j] == Integer.MAX_VALUE)
+					if (distances[1][i][k] == Integer.MAX_VALUE || distances[1][k][j] == Integer.MAX_VALUE)
 						continue;
-					final int d = distances[i][k] + distances[k][j];
-					if (distances[i][j] > d) {
-						distances[i][j] = d;
-						previous[i][j] = previous[k][j];
+					final int d = distances[1][i][k] + distances[1][k][j];
+					if (distances[1][i][j] > d) {
+						distances[1][i][j] = d;
+						previous[1][i][j] = previous[1][k][j];
 					}
 				}
 	}
 
+	private void setEdge(Tile t, Tile t1) {
+		distances[0][t.getIndex()][t1.getIndex()] = distances[1][t.getIndex()][t1.getIndex()] = 1;
+		previous[0][t.getIndex()][t1.getIndex()] = previous[1][t.getIndex()][t1.getIndex()] = t;
+	}
+
 	public int getDistances(final Tile from, final Tile to) {
-		return distances[from.getIndex()][to.getIndex()];
+		return distances[0][from.getIndex()][to.getIndex()];
 	}
 
 	public List<Tile> getPath(final Tile from, Tile to) {
-		if (previous[from.getIndex()][to.getIndex()] == null)
+		final int dx = to.getCoordinates().x() - from.getCoordinates().x();
+		final int dy = to.getCoordinates().y() - from.getCoordinates().y();
+		final boolean alternatePath = Math.abs(dy) > Math.abs(dx) ? dy > 0 : dy < 0;
+
+		if (previous[0][from.getIndex()][to.getIndex()] == null)
 			return Collections.emptyList();
 		List<Tile> path = new ArrayList<>();
 		path.add(to);
 		while (!from.equals(to)) {
-			to = previous[from.getIndex()][to.getIndex()];
+			to = alternatePath
+					? previous[1][from.getIndex()][to.getIndex()]
+					: previous[0][from.getIndex()][to.getIndex()];
 			path.addFirst(to);
 		}
 
