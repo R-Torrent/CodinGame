@@ -242,8 +242,10 @@ class Brain {
 			final int[] valuesX = extractValues(0, totalFoeShootingPotential, coordinates);
 			final int[] valuesY = extractValues(1, totalFoeShootingPotential, coordinates);
 
-			final Vector2D gradient = Vector2D.multiplyByConst(
-					new Vector2D(calculateFiniteDifferences(valuesX), calculateFiniteDifferences(valuesY)), -k0);
+			final Vector2D gradient = player.getGameTurn() > initialDeployment
+					? Vector2D.multiplyByConst(new Vector2D(calculateFiniteDifferences(valuesX),
+							calculateFiniteDifferences(valuesY)), -k0)
+					: new Vector2D();
 
 			// Attraction to foes; set up to the optimal range
 			final Vector2D foes = player.getGameTurn() > initialDeployment
