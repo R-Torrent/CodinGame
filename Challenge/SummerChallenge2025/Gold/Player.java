@@ -1,6 +1,8 @@
 import java.util.*;
 import java.util.function.Predicate;
 
+import static java.util.Comparator.comparing;
+
 /*
  * Summer Challenge 2025
  * Contest
@@ -161,6 +163,7 @@ class Brain {
 	// Turns in the "Initial Deployment Stage"
 	private final int initialDeployment;
 	private final Map<Integer, Map<Tile, Integer>> splashBombLocationAppraisal;
+	private final Comparator<Map.Entry<Agent, Integer>> shootingPriorities;
 	private Set<Agent> otherAgents;
 
 	// Aversion to danger (AKA constant of proportionality with the gradient of the totalFoeShootingPotential)
@@ -191,8 +194,32 @@ class Brain {
 	public Brain(final Player player, final Grid grid) {
 		this.player = player;
 		this.grid = grid;
+
 		initialDeployment = grid.getWidth() / 4;
+
 		splashBombLocationAppraisal = new HashMap<>(player.getAgents().length);
+
+		// Shooting priority criteria
+		final Comparator<Map.Entry<Agent, Integer>> primary =	(e1, e2) -> {
+			final Agent f1 = e1.getKey(), f2 = e2.getKey();
+
+			// Shoot to kill first...
+			if (f1.getWetness() + e1.getValue() < Agent.deathWetness
+					&& f2.getWetness() + e2.getValue() >= Agent.deathWetness)
+				return -1;
+			if (f1.getWetness() + e1.getValue() >= Agent.deathWetness
+					&& f2.getWetness() + e2.getValue() < Agent.deathWetness)
+				return 1;
+			if (f1.getWetness() + e1.getValue() >= Agent.deathWetness
+					&& f2.getWetness() + e2.getValue() >= Agent.deathWetness)
+				return ((f2.getWetness() + e2.getValue()) - (f1.getWetness() + e1.getValue()));
+
+			// ...but most shots are for maximizing damage
+			return e1.getValue() - e2.getValue();
+		};
+		shootingPriorities = primary
+				.thenComparing(Map.Entry::getKey, Comparator.comparingInt(Agent::getWetness))
+				.thenComparing(Map.Entry::getKey, Comparator.comparingDouble(Agent::getDamagePerTurn));
 	}
 
 	public int getInitialDeployment() { return initialDeployment; }
@@ -306,7 +333,7 @@ class Brain {
 		grid.resetAgentsRemaining(player.getMyAgents());
 		SplashBomb.determineAllSplashBombs(grid);
 		final List<Agent> myAgents = player.getMyAgents().stream()
-				.sorted(Comparator.comparing(Agent::getOptimalRange)) // Close-range agents go first
+				.sorted(comparing(Agent::getOptimalRange)) // Close-range agents get to pick first
 				.toList();
 		otherAgents = new HashSet<>(player.getOtherAgents());
 		for (Agent a : myAgents) {
@@ -321,26 +348,7 @@ class Brain {
 								[foe.getLocation().getCoordinates().y()]));
 			final Optional<Map.Entry<Agent, Integer>> intendedShootingTarget = shootingDamage.entrySet().stream()
 					.filter(e -> e.getValue() > 0)
-					.max((e1, e2) -> {
-						final Agent f1 = e1.getKey(), f2 = e2.getKey();
-
-						// Shoot to kill first...
-						if (f1.getWetness() + e1.getValue() < Agent.deathWetness
-								&& f2.getWetness() + e2.getValue() >= Agent.deathWetness)
-							return -1;
-						if (f1.getWetness() + e1.getValue() >= Agent.deathWetness
-								&& f2.getWetness() + e2.getValue() < Agent.deathWetness)
-							return 1;
-						if (f1.getWetness() + e1.getValue() >= Agent.deathWetness
-								&& f2.getWetness() + e2.getValue() >= Agent.deathWetness)
-							return ((f2.getWetness() + e2.getValue()) - (f1.getWetness() + e1.getValue()));
-
-						// ...then very wet targets, should the expected damage be equal...
-						if (e1.getValue().equals(e2.getValue()))
-							return f1.getWetness() - f2.getWetness();
-
-						// ...but most shots are for maximizing damage
-						return e1.getValue() - e2.getValue(); });
+					.max(shootingPriorities);
 
 			final Map<Tile, Integer> splashBombTotalDamage = new HashMap<>(25);
 			if (a.getSplashBombs() > 0) {
@@ -562,6 +570,7 @@ class Agent {
 	private final int optimalRange;
 	private final int soakingPower;
 	private final int initSplashBombs;
+	private final double damagePerTurn;
 
 	private Tile location;
 	private int cooldown;
@@ -597,6 +606,7 @@ class Agent {
 		this.optimalRange = optimalRange;
 		this.soakingPower = soakingPower;
 		this.initSplashBombs = initSplashBombs;
+		damagePerTurn = (double)soakingPower / (shootCooldown + 1);
 
 		forcesActingOn = new Vector2D[Force.values().length];
 	}
@@ -630,6 +640,8 @@ class Agent {
 	public int getShootCooldown() { return shootCooldown; }
 
 	public int getOptimalRange() { return optimalRange; }
+
+	public double getDamagePerTurn() { return damagePerTurn; }
 
 	public Tile getLocation() { return location; }
 
@@ -726,7 +738,6 @@ class Agent {
 	@Override
 	public String toString() {
 		return "AgentId=" + agentId +
-				"\n  myPlayer=" + myPlayer +
 				"\n  shootCooldown=" + shootCooldown +
 				"\n  optimalRange=" + optimalRange +
 				"\n  soakingPower=" + soakingPower +
