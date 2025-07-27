@@ -162,7 +162,7 @@ class Brain {
 	private Set<Agent> otherAgents;
 
 	// Initial deployment turns
-	public static final int initialDeployment = 3;
+	public static final int initialDeployment = 4;
 	// Aversion to danger (AKA constant of proportionality with the gradient of the totalFoeShootingPotential)
 	private static final double k0 = 15.0;
 	// Constant of attraction to foes, per difference in wetness
@@ -172,7 +172,7 @@ class Brain {
 	// Inverse Power by which attraction to foes falls
 	private static final double invFoes = 0.75;
 	// Constant of repulsion between friends
-	private static final double k2 = 100.0;
+	private static final double k2 = 120.0;
 	// Inverse Power by which repulsion between friends falls
 	private static final double invFriends = 2.5;
 	// Constant of appeal to SplashBomb runs
@@ -316,22 +316,22 @@ class Brain {
 			final Optional<Map.Entry<Agent, Integer>> intendedShootingTarget = shootingDamage.entrySet().stream()
 					.filter(e -> e.getValue() > 0)
 					.max((e1, e2) -> {
-						final Agent a1 = e1.getKey(), a2 = e2.getKey();
+						final Agent f1 = e1.getKey(), f2 = e2.getKey();
 
 						// Shoot to kill first...
-						if (a1.getWetness() + e1.getValue() < Agent.deathWetness
-								&& a2.getWetness() + e2.getValue() >= Agent.deathWetness)
+						if (f1.getWetness() + e1.getValue() < Agent.deathWetness
+								&& f2.getWetness() + e2.getValue() >= Agent.deathWetness)
 							return -1;
-						if (a1.getWetness() + e1.getValue() >= Agent.deathWetness
-								&& a2.getWetness() + e2.getValue() < Agent.deathWetness)
+						if (f1.getWetness() + e1.getValue() >= Agent.deathWetness
+								&& f2.getWetness() + e2.getValue() < Agent.deathWetness)
 							return 1;
-						if (a1.getWetness() + e1.getValue() >= Agent.deathWetness
-								&& a2.getWetness() + e2.getValue() >= Agent.deathWetness)
-							return ((a2.getWetness() + e2.getValue()) - (a1.getWetness() + e1.getValue()));
+						if (f1.getWetness() + e1.getValue() >= Agent.deathWetness
+								&& f2.getWetness() + e2.getValue() >= Agent.deathWetness)
+							return ((f2.getWetness() + e2.getValue()) - (f1.getWetness() + e1.getValue()));
 
 						// ...then very wet targets, should the expected damage be equal...
 						if (e1.getValue().equals(e2.getValue()))
-							return a1.getWetness() - a2.getWetness();
+							return f1.getWetness() - f2.getWetness();
 
 						// ...but most shots are for maximizing damage
 						return e1.getValue() - e2.getValue(); });
@@ -395,7 +395,7 @@ class Brain {
 			final Vector2D xfa = Vector2D.minus(f.getVector(), xa);
 			final double x = location.getCoordinates().distanceTo(foeLocation.getCoordinates());
 			final double attractionForce = k1 * (Math.max(f.getWetness() - wetness, indifferenceToWetness))
-					* (x - optimalRange + 0.5) * Math.pow(x, -1 -invFoes);
+					* (x - optimalRange + 1) * Math.pow(x, -1 -invFoes);
 			final List<Tile> attractionPath = grid.getPath(location, foeLocation);
 			Vector2D attractionVector = new Vector2D();
 			if (attractionForce <= 0 || attractionPath.size() <= 1)
