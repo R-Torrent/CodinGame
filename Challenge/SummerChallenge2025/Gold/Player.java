@@ -7,7 +7,7 @@ import java.util.function.Predicate;
  */
 
 /*
- * Silver League
+ * Gold League
  */
 
 /**
@@ -81,8 +81,8 @@ class Player {
 			overmind.think();
 
 			if (debug) {
-				if (gameTurn <= Brain.initialDeployment)
-					System.err.println("** Initial Deployment **");
+				if (gameTurn <= overmind.getInitialDeployment())
+					System.err.println("** Initial Deployment Stage **");
 				myAgents.stream()
 						.filter(a -> agentsToFollow.contains(a.getAgentId()))
 						.forEach(System.err::println);
@@ -158,11 +158,11 @@ class Brain {
 
 	private final Player player;
 	private final Grid grid;
+	// Turns in the "Initial Deployment Stage"
+	private final int initialDeployment;
 	private final Map<Integer, Map<Tile, Integer>> splashBombLocationAppraisal;
 	private Set<Agent> otherAgents;
 
-	// Initial deployment turns
-	public static final int initialDeployment = 4;
 	// Aversion to danger (AKA constant of proportionality with the gradient of the totalFoeShootingPotential)
 	private static final double k0 = 15.0;
 	// Constant of attraction to foes, per difference in wetness
@@ -191,8 +191,11 @@ class Brain {
 	public Brain(final Player player, final Grid grid) {
 		this.player = player;
 		this.grid = grid;
+		initialDeployment = grid.getWidth() / 4;
 		splashBombLocationAppraisal = new HashMap<>(player.getAgents().length);
 	}
+
+	public int getInitialDeployment() { return initialDeployment; }
 
 	public void think() {
 		// Enemy shooting potential
@@ -308,6 +311,7 @@ class Brain {
 		otherAgents = new HashSet<>(player.getOtherAgents());
 		for (Agent a : myAgents) {
 			final Tile presumedLocation = a.getIntendedMove().orElse(a.getLocation());
+			final Coordinates presumedCoordinates = presumedLocation.getCoordinates();
 
 			final int[][] shootDamageArea = a.calculateShootDamagePotential(grid, presumedLocation);
 			final Map<Agent, Integer> shootingDamage = new HashMap<>(otherAgents.size());
@@ -340,8 +344,8 @@ class Brain {
 
 			final Map<Tile, Integer> splashBombTotalDamage = new HashMap<>(25);
 			if (a.getSplashBombs() > 0) {
-				final int x1 = presumedLocation.getCoordinates().x();
-				final int y1 = presumedLocation.getCoordinates().y();
+				final int x1 = presumedCoordinates.x();
+				final int y1 = presumedCoordinates.y();
 				for (int x = Math.max(x1 - 4, 0); x <= Math.min(x1 + 4, grid.getWidth() - 1); x++) {
 					final int ySpan = Math.max(4 - Math.abs(x - x1), 0);
 					for (int y = Math.max(y1 - ySpan, 0); y <= Math.min(y1 + ySpan, grid.getHeight() - 1); y++) {
