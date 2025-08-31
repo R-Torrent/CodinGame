@@ -1,6 +1,8 @@
+#include <algorithm>
 #include <cctype>
 #include <cstdlib>
 #include <iostream>
+#include <string>
 
 /*
  * Winamax Sponsored Contest
@@ -17,28 +19,26 @@ using namespace std;
 int width;
 int height;
 
-void printSolution(char (&solution)[1000][1001])
+void printSolution(string (&solution)[1000])
 {
 	for (int i = 0; i < height; i++) {
-		for (int j = 0; j < width; j++)
-			if (solution[i][j] == '0')
-				solution[i][j] = '.';
+		replace(solution[i].begin(), solution[i].end(), '0', '.');
 		cout << solution[i] << endl;
 	}
 
 	exit(0);
 }
 
-void duplicateCourse(char (&copy)[1000][1001], const char (&original)[1000][1001])
+void duplicateCourse(string (&copy)[1000], const string (&original)[1000])
 {
 	for (int i = 0; i < height; i++)
-		for (int j = 0; j <= width; j++)
-			copy[i][j] = original[i][j];
+		copy[i] = original[i];
 }
 
-void backtrack(char (&)[1000][1001]);
+void backtrack(string (&)[1000]);
 
-void hitLeft(char (&golfCourse)[1000][1001], const int row, const int col, int count)
+void hitLeft(string (&golfCourse)[1000], const int row, const int col,
+		int count)
 {
 	const int col1 = col - count;
 	if (col1 < 0)
@@ -50,7 +50,7 @@ void hitLeft(char (&golfCourse)[1000][1001], const int row, const int col, int c
         if (!(ch == '.' || (ch == 'X' && c != col1) || (ch == 'H')))
 			return;
 	}
-	char next[1000][1001];
+	string next[1000];
 	duplicateCourse(next, golfCourse);
 	for (c = col; c > col1 && next[row][c] != 'H'; c--)
 		next[row][c] = '<';
@@ -60,7 +60,8 @@ void hitLeft(char (&golfCourse)[1000][1001], const int row, const int col, int c
 	backtrack(next);
 }
 
-void hitRight(char (&golfCourse)[1000][1001], const int row, const int col, int count)
+void hitRight(string (&golfCourse)[1000], const int row, const int col,
+		int count)
 {
 	const int col1 = col + count;
 	if (col1 >= width)
@@ -72,7 +73,7 @@ void hitRight(char (&golfCourse)[1000][1001], const int row, const int col, int 
         if (!(ch == '.' || (ch == 'X' && c != col1) || (ch == 'H')))
 			return;
 	}
-	char next[1000][1001];
+	string next[1000];
 	duplicateCourse(next, golfCourse);
 	for (c = col; c < col1 && next[row][c] != 'H'; c++)
 		next[row][c] = '>';
@@ -82,7 +83,8 @@ void hitRight(char (&golfCourse)[1000][1001], const int row, const int col, int 
 	backtrack(next);
 }
 
-void hitUp(char (&golfCourse)[1000][1001], const int row, const int col, int count)
+void hitUp(string (&golfCourse)[1000], const int row, const int col,
+		int count)
 {
 	const int row1 = row - count;
 	if (row1 < 0)
@@ -94,7 +96,7 @@ void hitUp(char (&golfCourse)[1000][1001], const int row, const int col, int cou
     	if (!(ch == '.' || (ch == 'X' && r != row1) || (ch == 'H')))
 			return;
 	}
-	char next[1000][1001];
+	string next[1000];
 	duplicateCourse(next, golfCourse);
 	for (r = row; r > row1 && next[r][col] != 'H'; r--)
 		next[r][col] = '^';
@@ -104,7 +106,8 @@ void hitUp(char (&golfCourse)[1000][1001], const int row, const int col, int cou
 	backtrack(next);
 }
 
-void hitDown(char (&golfCourse)[1000][1001], const int row, const int col, int count)
+void hitDown(string (&golfCourse)[1000], const int row, const int col,
+		int count)
 {
 	const int row1 = row + count;
 	if (row1 >= height)
@@ -116,7 +119,7 @@ void hitDown(char (&golfCourse)[1000][1001], const int row, const int col, int c
     	if (!(ch == '.' || (ch == 'X' && r != row1) || (ch == 'H')))
 			return;
 	}
-	char next[1000][1001];
+	string next[1000];
 	duplicateCourse(next, golfCourse);
 	for (r = row; r < row1 && next[r][col] != 'H'; r++)
 		next[r][col] = 'v';
@@ -127,13 +130,13 @@ void hitDown(char (&golfCourse)[1000][1001], const int row, const int col, int c
 }
 
 // https://en.wikipedia.org/wiki/Backtracking
-void backtrack(char (&candidate)[1000][1001])
+void backtrack(string (&candidate)[1000])
 {
 	int i, j;
+
 	for (i = 0; i < height; i++)
-		for (j = 0; j < width; j++)
-			if (candidate[i][j] == 'H')
-				break;
+		if (candidate[i].find('H') != string::npos)
+			break;
 	if (i == height)
 		printSolution(candidate);
 	for (i = 0; i < height; i++)
@@ -152,7 +155,7 @@ void backtrack(char (&candidate)[1000][1001])
 
 int main()
 {
-	char golfCourse[1000][1001];
+	string golfCourse[1000];
 
 	cin >> width >> height; cin.ignore();
 	for (int i = 0; i < height; i++) {
