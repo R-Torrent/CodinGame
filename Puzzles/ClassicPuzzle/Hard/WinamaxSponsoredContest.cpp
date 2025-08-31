@@ -1,4 +1,5 @@
 #include <cctype>
+#include <cstdlib>
 #include <iostream>
 
 /*
@@ -15,6 +16,18 @@ using namespace std;
 
 int width;
 int height;
+
+void printSolution(char (&solution)[1000][1001])
+{
+	for (int i = 0; i < height; i++) {
+		for (int j = 0; j < width; j++)
+			if (solution[i][j] == '0')
+				solution[i][j] = '.';
+		cout << solution[i] << endl;
+	}
+
+	exit(0);
+}
 
 void duplicateCourse(char (&copy)[1000][1001], const char (&original)[1000][1001])
 {
@@ -116,8 +129,15 @@ void hitDown(char (&golfCourse)[1000][1001], const int row, const int col, int c
 // https://en.wikipedia.org/wiki/Backtracking
 void backtrack(char (&candidate)[1000][1001])
 {
-	for (int i = 0; i < height; i++)
-		for (int j = 0; j < width; j++) {
+	int i, j;
+	for (i = 0; i < height; i++)
+		for (j = 0; j < width; j++)
+			if (candidate[i][j] == 'H')
+				break;
+	if (i == height)
+		printSolution(candidate);
+	for (i = 0; i < height; i++)
+		for (j = 0; j < width; j++) {
 			char count = candidate[i][j];
 			if (isdigit(count) && count != '0') {
 				count -= '0';
@@ -128,12 +148,6 @@ void backtrack(char (&candidate)[1000][1001])
 				return;
 			}
 		}
-	for (int i = 0; i < height; i++) {
-		for (int j = 0; j < width; j++)
-			if (candidate[i][j] == '0')
-				candidate[i][j] = '.';
-		cout << candidate[i] << endl;
-	}
 }
 
 int main()
