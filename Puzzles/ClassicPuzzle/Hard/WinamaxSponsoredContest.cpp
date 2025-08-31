@@ -23,6 +23,7 @@ void printSolution(string (&solution)[1000])
 {
 	for (int i = 0; i < height; i++) {
 		replace(solution[i].begin(), solution[i].end(), '0', '.');
+		replace(solution[i].begin(), solution[i].end(), 'X', '.');
 		cout << solution[i] << endl;
 	}
 
