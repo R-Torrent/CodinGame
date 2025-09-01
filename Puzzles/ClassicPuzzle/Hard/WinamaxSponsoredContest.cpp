@@ -48,7 +48,7 @@ void hitLeft(string (&golfCourse)[1000], const int row, const int col,
 	int c;
 	for (c = col - 1; c >= col1; c--) {
         const char ch = golfCourse[row][c];
-        if (!(ch == '.' || (ch == 'X' && c != col1) || (ch == 'H')))
+        if (!(ch == '.' || (ch == 'X' && c != col1) || (ch == 'H' && c == col1)))
 			return;
 	}
 	string next[1000];
@@ -71,7 +71,7 @@ void hitRight(string (&golfCourse)[1000], const int row, const int col,
 	int c;
 	for (c = col + 1; c <= col1; c++) {
 		const char ch = golfCourse[row][c];
-        if (!(ch == '.' || (ch == 'X' && c != col1) || (ch == 'H')))
+        if (!(ch == '.' || (ch == 'X' && c != col1) || (ch == 'H' && c == col1)))
 			return;
 	}
 	string next[1000];
@@ -94,7 +94,7 @@ void hitUp(string (&golfCourse)[1000], const int row, const int col,
 	int r;
 	for (r = row - 1; r >= row1; r--) {
     	const char ch = golfCourse[r][col];
-    	if (!(ch == '.' || (ch == 'X' && r != row1) || (ch == 'H')))
+    	if (!(ch == '.' || (ch == 'X' && r != row1) || (ch == 'H' && r == row1)))
 			return;
 	}
 	string next[1000];
@@ -117,7 +117,7 @@ void hitDown(string (&golfCourse)[1000], const int row, const int col,
 	int r;    
 	for (r = row + 1; r <= row1; r++) {
 		const char ch = golfCourse[r][col];
-    	if (!(ch == '.' || (ch == 'X' && r != row1) || (ch == 'H')))
+    	if (!(ch == '.' || (ch == 'X' && r != row1) || (ch == 'H' && r == row1)))
 			return;
 	}
 	string next[1000];
