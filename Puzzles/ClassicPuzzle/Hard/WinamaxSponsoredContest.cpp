@@ -16,10 +16,12 @@ using namespace std;
  * the standard input according to the problem statement.
  **/
 
+#define MAXHEIGHT 20
+
 int width;
 int height;
 
-void printSolution(string (&solution)[1000])
+void printSolution(string (&solution)[MAXHEIGHT])
 {
 	for (int i = 0; i < height; i++) {
 		replace(solution[i].begin(), solution[i].end(), '0', '.');
@@ -30,15 +32,15 @@ void printSolution(string (&solution)[1000])
 	exit(0);
 }
 
-void duplicateCourse(string (&copy)[1000], const string (&original)[1000])
+void duplicateCourse(string (&copy)[MAXHEIGHT], const string (&original)[MAXHEIGHT])
 {
 	for (int i = 0; i < height; i++)
 		copy[i] = original[i];
 }
 
-void backtrack(string (&)[1000]);
+void backtrack(string (&)[MAXHEIGHT]);
 
-void hitLeft(string (&golfCourse)[1000], const int row, const int col,
+void hitLeft(string (&golfCourse)[MAXHEIGHT], const int row, const int col,
 		int count)
 {
 	const int col1 = col - count;
@@ -51,7 +53,7 @@ void hitLeft(string (&golfCourse)[1000], const int row, const int col,
         if (!(ch == '.' || (ch == 'X' && c != col1) || (ch == 'H' && c == col1)))
 			return;
 	}
-	string next[1000];
+	string next[MAXHEIGHT];
 	duplicateCourse(next, golfCourse);
 	for (c = col; c > col1 && next[row][c] != 'H'; c--)
 		next[row][c] = '<';
@@ -61,7 +63,7 @@ void hitLeft(string (&golfCourse)[1000], const int row, const int col,
 	backtrack(next);
 }
 
-void hitRight(string (&golfCourse)[1000], const int row, const int col,
+void hitRight(string (&golfCourse)[MAXHEIGHT], const int row, const int col,
 		int count)
 {
 	const int col1 = col + count;
@@ -74,7 +76,7 @@ void hitRight(string (&golfCourse)[1000], const int row, const int col,
         if (!(ch == '.' || (ch == 'X' && c != col1) || (ch == 'H' && c == col1)))
 			return;
 	}
-	string next[1000];
+	string next[MAXHEIGHT];
 	duplicateCourse(next, golfCourse);
 	for (c = col; c < col1 && next[row][c] != 'H'; c++)
 		next[row][c] = '>';
@@ -84,7 +86,7 @@ void hitRight(string (&golfCourse)[1000], const int row, const int col,
 	backtrack(next);
 }
 
-void hitUp(string (&golfCourse)[1000], const int row, const int col,
+void hitUp(string (&golfCourse)[MAXHEIGHT], const int row, const int col,
 		int count)
 {
 	const int row1 = row - count;
@@ -97,7 +99,7 @@ void hitUp(string (&golfCourse)[1000], const int row, const int col,
     	if (!(ch == '.' || (ch == 'X' && r != row1) || (ch == 'H' && r == row1)))
 			return;
 	}
-	string next[1000];
+	string next[MAXHEIGHT];
 	duplicateCourse(next, golfCourse);
 	for (r = row; r > row1 && next[r][col] != 'H'; r--)
 		next[r][col] = '^';
@@ -107,7 +109,7 @@ void hitUp(string (&golfCourse)[1000], const int row, const int col,
 	backtrack(next);
 }
 
-void hitDown(string (&golfCourse)[1000], const int row, const int col,
+void hitDown(string (&golfCourse)[MAXHEIGHT], const int row, const int col,
 		int count)
 {
 	const int row1 = row + count;
@@ -120,7 +122,7 @@ void hitDown(string (&golfCourse)[1000], const int row, const int col,
     	if (!(ch == '.' || (ch == 'X' && r != row1) || (ch == 'H' && r == row1)))
 			return;
 	}
-	string next[1000];
+	string next[MAXHEIGHT];
 	duplicateCourse(next, golfCourse);
 	for (r = row; r < row1 && next[r][col] != 'H'; r++)
 		next[r][col] = 'v';
@@ -131,14 +133,19 @@ void hitDown(string (&golfCourse)[1000], const int row, const int col,
 }
 
 // https://en.wikipedia.org/wiki/Backtracking
-void backtrack(string (&candidate)[1000])
+void backtrack(string (&candidate)[MAXHEIGHT])
 {
 	int i, j;
+	int holesLeft = 0, ballsInPlay = 0;
 
-	for (i = 0; i < height; i++)
-		if (candidate[i].find('H') != string::npos)
-			break;
-	if (i == height)
+	for (i = 0; i < height; i++) {
+		holesLeft += count(candidate[i].begin(), candidate[i].end(), 'H');
+		ballsInPlay += count_if(candidate[i].begin(), candidate[i].end(),
+				[](char c) { return '1' <= c && c <= '9'; });
+	}
+	if (holesLeft != ballsInPlay) // reject
+		return;
+	if (!holesLeft) //accept
 		printSolution(candidate);
 	for (i = 0; i < height; i++)
 		for (j = 0; j < width; j++) {
@@ -156,7 +163,7 @@ void backtrack(string (&candidate)[1000])
 
 int main()
 {
-	string golfCourse[1000];
+	string golfCourse[MAXHEIGHT];
 
 	cin >> width >> height; cin.ignore();
 	for (int i = 0; i < height; i++) {
