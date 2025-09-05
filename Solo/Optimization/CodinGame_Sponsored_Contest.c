@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 /*
  * CodinGame Sponsored Contest 
@@ -55,6 +56,8 @@ void print_command(const move_t);
 
 int main()
 {
+	srand(time(NULL));
+
 	scanf("%d", &height);
 	scanf("%d", &width);
 	size = width * height;
@@ -112,33 +115,33 @@ int main()
 		}
 
 		// neighbor cells for the player
-		cell_t *c1, *const cp = player->curr_location;;
-		if (y > 0 && (c1 = &cell[y - 1][x])->c == UNKNOWN) {
+		cell_t *c1, *const clp = player->curr_location;;
+		if (y > 0 && (c1 = &cell[y - 1][x])->c != WALL) {
 			c1->c = map_up;
 			if (map_up == EMPTY) {
-				cp->neighbor[UP] = c1;
-				c1->neighbor[DOWN] = cp;
+				clp->neighbor[UP] = c1;
+				c1->neighbor[DOWN] = clp;
 			}
 		}
-		if (x < width - 1 && (c1 = &cell[y][x + 1])->c == UNKNOWN) {
+		if (x < width - 1 && (c1 = &cell[y][x + 1])->c != WALL) {
 			c1->c = map_right;
-			if (map_up == EMPTY) {
-				cp->neighbor[RIGHT] = c1;
-				c1->neighbor[LEFT] = cp;
+			if (map_right == EMPTY) {
+				clp->neighbor[RIGHT] = c1;
+				c1->neighbor[LEFT] = clp;
 			}
 		}
-		if (y < height - 1 && (c1 = &cell[y + 1][x])->c == UNKNOWN) {
+		if (y < height - 1 && (c1 = &cell[y + 1][x])->c != WALL) {
 			c1->c = map_down;
-			if (map_up == EMPTY) {
-				cp->neighbor[DOWN] = c1;
-				c1->neighbor[UP] = cp;
+			if (map_down == EMPTY) {
+				clp->neighbor[DOWN] = c1;
+				c1->neighbor[UP] = clp;
 			}
 		}
-		if (x > 0 && (c1 = &cell[y][x - 1])->c == UNKNOWN) {
+		if (x > 0 && (c1 = &cell[y][x - 1])->c != WALL) {
 			c1->c = map_left;
-			if (map_up == EMPTY) {
-				cp->neighbor[LEFT] = c1;
-				c1->neighbor[RIGHT] = cp;
+			if (map_left == EMPTY) {
+				clp->neighbor[LEFT] = c1;
+				c1->neighbor[RIGHT] = clp;
 			}
 		}
 
@@ -173,7 +176,24 @@ int main()
 
 		print_map(map, cell, character);
 
-		print_command(turn % 2 ? LEFT : RIGHT);
+		// silly random movement around the maze
+		int r = 0;
+		for (i = 0; i < 4; i++)
+			if (clp->neighbor[i] && !clp->neighbor[i]->character)
+				r++;
+		if (r == 1) // dead end
+			r = STILL;
+		else
+			do {
+				r = rand() % 4;
+				switch (r) {
+				case 0: c1 = clp->neighbor[RIGHT]; r = RIGHT; break;
+				case 1: c1 = clp->neighbor[UP]; r = UP; break;
+				case 2: c1 = clp->neighbor[DOWN]; r = DOWN; break;
+				case 3: c1 = clp->neighbor[LEFT]; r = LEFT; break;
+				}
+			} while (!c1 || c1 == player->prev_location);
+		print_command(r);
 	}
 
 	free(cell);
