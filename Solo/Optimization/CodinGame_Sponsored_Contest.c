@@ -1,9 +1,10 @@
 // TODO
+// Maze printing should be guarded with conditional precompiler statements
 // Implement general lists
-// Cells need a list for occupants instead of a single pointer to character_t
+// Cells need a list of occupants instead of a single pointer to character_t
 // Scoring not taken into account
 // Unknown if there are energizers to eat the ghosts and bonus items in the center of the maze
-// Unknown if the maze regenerates or changes once all the dots are eaten
+// Unknown if the maze regenerates or changes once all the dots are eaten\
 // AI is silly
 
 #include <stdio.h>
@@ -140,12 +141,20 @@ int main()
 				plc->neighbor[UP] = c1;
 				c1->neighbor[DOWN] = plc;
 			}
+			else if (maze_up != WALL) {
+				fprintf(stderr, "** New stuff found! **\n");
+				exit(1);
+			}
 		}
 		if ((c1 = &cell[y][(x + 1) % width])->c != WALL) {
 			c1->c = maze_right;
 			if (maze_right == EMPTY) {
 				plc->neighbor[RIGHT] = c1;
 				c1->neighbor[LEFT] = plc;
+			}
+			else if (maze_right != WALL) {
+				fprintf(stderr, "** New stuff found! **\n");
+				exit(1);
 			}
 		}
 		if ((c1 = &cell[(y + 1) % height][x])->c != WALL) {
@@ -154,12 +163,20 @@ int main()
 				plc->neighbor[DOWN] = c1;
 				c1->neighbor[UP] = plc;
 			}
+			else if (maze_down != WALL) {
+				fprintf(stderr, "** New stuff found! **\n");
+				exit(1);
+			}
 		}
 		if ((c1 = &cell[y][(x - 1) % width])->c != WALL) {
 			c1->c = maze_left;
 			if (maze_left == EMPTY) {
 				plc->neighbor[LEFT] = c1;
 				c1->neighbor[RIGHT] = plc;
+			}
+			else if (maze_left != WALL) {
+				fprintf(stderr, "** New stuff found! **\n");
+				exit(1);
 			}
 		}
 
